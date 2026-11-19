@@ -7,8 +7,9 @@ Private administration dashboard for the Fusion Discord bot.
 - Keep this repository private.
 - The browser uses only the Supabase project URL and anon/publishable key.
 - Supabase Auth handles administrator sign-in.
-- A protected `panel-admin` Edge Function must authorize the signed-in user on every request.
+- The `panel-admin` Edge Function checks the authenticated user's immutable Supabase Auth ID against a server-side allowlist on every browser request.
 - The dashboard does not write directly to configuration tables.
+- The Discord bot authenticates to the configuration endpoint with the existing `FUSION_BOT_API_SECRET`.
 - Never put a Supabase service-role key, Discord bot token, or `FUSION_BOT_API_SECRET` in frontend files, Vite variables, or committed files.
 
 **A private repository does not make a deployed website private.** GitHub Pages deployments are public-facing unless the GitHub plan and Pages visibility settings explicitly support private publishing. For a genuinely private dashboard, use a hosting provider with an access gateway (for example, Cloudflare Access) and retain Supabase authorization as a second layer. An unlisted URL is not an access control.
@@ -26,19 +27,42 @@ npm install
 npm run dev
 ```
 
-## Backend contract
+## Supabase backend setup
 
-The dashboard expects a Supabase Edge Function named `panel-admin`. It is not included in this frontend foundation. The function must:
+The first backend foundation is included in this repository:
 
-1. Validate the Supabase access token and resolve the authenticated user.
-2. Check that the user's immutable Supabase Auth ID is on a server-side administrator allowlist.
-3. Reject all other users, even if they can create a normal Supabase account.
-4. Support the `get_dashboard` action used by the initial dashboard.
-5. Later support narrowly scoped command, verification, permission, and audit-log actions.
-6. Use service-role credentials only inside the Edge Function runtime; never return secrets to the browser.
+- Migration: `supabase/migrations/0001_fusion_panel_config.sql`
+- Edge Function: `supabase/functions/panel-admin/index.ts`
+- Function config: `supabase/config.toml`
 
-The current UI deliberately shows backend integration as pending until that function exists. It does not pretend that login alone grants bot administration access.
+Apply the SQL migration in the Supabase SQL Editor, then deploy the `panel-admin` Edge Function.
 
-## Deployment
+Configure these Edge Function secrets in Supabase:
 
-Do not deploy this dashboard to a public URL until the access gateway and the backend administrator allowlist are configured and tested. The private GitHub repository protects source access, not the deployed site itself.
+| Secret | Value |
+| --- | --- |
+| `FUSION_PANEL_ADMIN_USER_ID` | Your own user's UUID from Supabase Authentication → Users |
+| `FUSION_BOT_API_SECRET` | The same strong random value already configured for the Fusion Discord bot |
+
+Supabase supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` to Edge Functions automatically. Do not copy the service-role key into the dashboard or bot.
+
+Create your own Supabase Auth account before setting the admin UUID. Do not enable public sign-up just for the panel; create the owner account through the Supabase dashboard/invite flow. Only the exact configured UUID is authorized by the Edge Function.
+
+The function currently supports:
+
+- `get_dashboard`: authenticated administrator reads the current settings.
+- `update_config`: authenticated administrator saves validated command and verification settings.
+- `bot_get_config`: the bot reads settings using `x-fusion-bot-secret`.
+
+The frontend currently provides the login and overview foundation. The command editor and bot-side polling integration are subsequent steps; do not treat the dashboard as fully operational until those are implemented and tested.
+
+## Deployment privacy
+
+Do not deploy this dashboard to a public URL until the access gateway and backend administrator allowlist are configured and tested. The private GitHub repository protects source access, not the deployed site itself.
+
+## Current limitations
+
+- The panel API does not expose Discord bot tokens or Supabase service credentials.
+- Bot status and server count are placeholders until a trusted bot heartbeat is implemented.
+- Command settings are stored securely, but the bot does not yet fetch and enforce them.
+- Account verification remains disabled until the authenticated in-game linking flow is implemented and deployed.
