@@ -14,6 +14,23 @@ Private administration dashboard for the Fusion Discord bot.
 
 **A private repository does not make a deployed website private.** GitHub Pages deployments are public-facing unless the GitHub plan and Pages visibility settings explicitly support private publishing. For a genuinely private dashboard, use a hosting provider with an access gateway (for example, Cloudflare Access) and retain Supabase authorization as a second layer. An unlisted URL is not an access control.
 
+## GitHub Pages deployment
+
+The repository includes a GitHub Actions workflow that builds the Vite app and deploys only the generated `dist/` output. Do not configure Pages to publish the repository root or the `main` branch directly.
+
+Before the first deployment:
+
+1. In **Fusion-Bot-Panel → Settings → Secrets and variables → Actions → Variables**, add:
+   - `VITE_SUPABASE_URL`: your Supabase project URL.
+   - `VITE_SUPABASE_ANON_KEY`: your Supabase anon/publishable key.
+2. In **Settings → Pages**, set **Build and deployment → Source** to **GitHub Actions**.
+3. Merge the deployment workflow to `main`. The Actions workflow will build and publish the site.
+4. Open the Pages URL shown in the successful **Deploy Fusion Control Panel** workflow run.
+
+These two `VITE_*` values are public browser configuration, not secrets. Never add the Supabase service-role key, Discord bot token, or `FUSION_BOT_API_SECRET` as Vite variables.
+
+If either public Supabase value is missing, the page will still display the sign-in screen but sign-in will be disabled with a configuration warning.
+
 ## Local development
 
 Requirements: Node.js 22 or newer.
