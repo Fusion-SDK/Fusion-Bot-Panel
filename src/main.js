@@ -56,7 +56,7 @@ function renderShell(content = "") {
         <nav class="nav-list">
           <a class="nav-link active" href="#overview"><span class="nav-icon">▦</span> Overview</a>
           <a class="nav-link" href="#commands"><span class="nav-icon">⌘</span> Commands <span class="nav-count">4</span></a>
-          <a class="nav-link" href="#verification"><span class="nav-icon">◈</span> Verification</a>
+          <a class="nav-link" href="#verification"><span class="nav-icon">◈</span> Verification</a>\n          <a class="nav-link" href="#security"><span class="nav-icon">⬡</span> Server security</a>
           <a class="nav-link" href="#permissions"><span class="nav-icon">♙</span> Permissions</a>
           <a class="nav-link" href="#activity"><span class="nav-icon">◷</span> Activity log</a>
         </nav>
@@ -128,6 +128,115 @@ function renderVerification() {
     <p class="save-feedback" id="verification-feedback" role="status"></p>`;
 }
 
+
+let activeGuildSecurity = null;
+let activeSecurityGuildId = "";
+
+function defaultGuildSecurity() {
+  return {
+    antiRaid: { enabled: false, joinThreshold: 6, windowSeconds: 10, alertChannelId: null },
+    antiNuke: { enabled: false, eventThreshold: 4, windowSeconds: 10, alertChannelId: null },
+    autoMod: { enabled: false, messageLimit: 6, windowSeconds: 8, mentionLimit: 5, alertChannelId: null },
+    joinGate: { enabled: false, minimumAccountAgeDays: 7, flagBots: false, alertChannelId: null },
+    lockdown: { enabled: false, logChannelId: null }
+  };
+}
+
+function renderSecurity() {
+  const security = activeGuildSecurity ?? defaultGuildSecurity();
+  const channelInput = (id, label, value) => `<div class="field-setting"><label for="${id}">${label}</label><input id="${id}" inputmode="numeric" placeholder="Optional Discord channel ID" value="${escapeHtml(value ?? "")}" /></div>`;
+  const toggle = (id, label, description, checked) => `<label class="setting-row"><span class="setting-copy"><strong>${label}</strong><span>${description}</span></span><input class="setting-toggle" id="${id}" type="checkbox" ${checked ? "checked" : ""} /><span class="toggle-ui" aria-hidden="true"></span></label>`;
+  const number = (id, label, value, min, max) => `<div class="field-setting"><label for="${id}">${label}</label><input id="${id}" type="number" min="${min}" max="${max}" value="${value}" /></div>`;
+  return `
+    <div class="page-heading"><div><div class="eyebrow">FUSION SECURITY / SERVER CONFIGURATION</div><h1>Server security</h1><p>Configure independent protection settings for each Discord server.</p></div><button class="button primary" id="save-security">Save settings</button></div>
+    <div class="notice warning">All security engines currently run in monitor-only mode. They report suspicious patterns but do not automatically punish members or change server permissions.</div>
+    <div class="settings-panel">
+      <div class="settings-panel-head"><div><h2>Choose a server</h2><p>Enter the Discord server ID. Settings are isolated per server.</p></div></div>
+      <div class="field-setting"><label for="security-guild-id">Discord server ID</label><div class="guild-picker"><input id="security-guild-id" inputmode="numeric" placeholder="17–20 digit server ID" value="${escapeHtml(activeSecurityGuildId)}" /><button class="button subtle" id="load-security">Load</button></div></div>
+    </div>
+    ${activeGuildSecurity ? `
+    <div class="settings-panel"><div class="settings-panel-head"><div><h2>Anti-Raid</h2><p>Detect unusually fast member joins.</p></div></div>
+      ${toggle("sec-raid-enabled","Enable anti-raid monitor","Alert when join volume crosses the configured threshold.",security.antiRaid.enabled)}
+      ${number("sec-raid-threshold","Join threshold",security.antiRaid.joinThreshold,2,100)}
+      ${number("sec-raid-window","Time window (seconds)",security.antiRaid.windowSeconds,3,300)}
+      ${channelInput("sec-raid-channel","Alert channel ID",security.antiRaid.alertChannelId)}
+    </div>
+    <div class="settings-panel"><div class="settings-panel-head"><div><h2>Anti-Nuke</h2><p>Detect bursts of sensitive server changes. Alerts are heuristic, not proof of malicious intent.</p></div></div>
+      ${toggle("sec-nuke-enabled","Enable anti-nuke monitor","Watch channel, role, ban, and webhook event spikes.",security.antiNuke.enabled)}
+      ${number("sec-nuke-threshold","Event threshold",security.antiNuke.eventThreshold,2,100)}
+      ${number("sec-nuke-window","Time window (seconds)",security.antiNuke.windowSeconds,3,300)}
+      ${channelInput("sec-nuke-channel","Alert channel ID",security.antiNuke.alertChannelId)}
+    </div>
+    <div class="settings-panel"><div class="settings-panel-head"><div><h2>AutoMod</h2><p>Identify message bursts, repeated messages, and mention floods.</p></div></div>
+      ${toggle("sec-automod-enabled","Enable AutoMod monitor","Flag suspicious message patterns without deleting messages.",security.autoMod.enabled)}
+      ${number("sec-automod-limit","Message limit",security.autoMod.messageLimit,3,50)}
+      ${number("sec-automod-window","Time window (seconds)",security.autoMod.windowSeconds,3,120)}
+      ${number("sec-automod-mentions","Mention limit",security.autoMod.mentionLimit,2,50)}
+      ${channelInput("sec-automod-channel","Alert channel ID",security.autoMod.alertChannelId)}
+    </div>
+    <div class="settings-panel"><div class="settings-panel-head"><div><h2>Join Gate</h2><p>Flag newly created accounts and optionally bot accounts.</p></div></div>
+      ${toggle("sec-joingate-enabled","Enable join gate monitor","Check account age when a member joins.",security.joinGate.enabled)}
+      ${number("sec-joingate-age","Minimum account age (days)",security.joinGate.minimumAccountAgeDays,0,365)}
+      ${toggle("sec-joingate-bots","Flag bot accounts","Include bot accounts in join alerts.",security.joinGate.flagBots)}
+      ${channelInput("sec-joingate-channel","Alert channel ID",security.joinGate.alertChannelId)}
+    </div>
+    <div class="settings-panel"><div class="settings-panel-head"><div><h2>Emergency Lockdown</h2><p>Reserved configuration for a future moderator-confirmed lockdown workflow.</p></div></div>
+      ${toggle("sec-lockdown-enabled","Enable lockdown controls","Does not lock anything in this release.",security.lockdown.enabled)}
+      ${channelInput("sec-lockdown-channel","Lockdown log channel ID",security.lockdown.logChannelId)}
+    </div>
+    <p class="save-feedback" id="security-feedback" role="status"></p>` : `<div class="empty-state"><div class="empty-icon">⬡</div><h2>Select a server to begin</h2><p>Load a server ID to view or change its security configuration.</p></div>`}
+  `;
+}
+
+async function loadGuildSecurity() {
+  const input = document.querySelector("#security-guild-id");
+  const guildId = input?.value.trim() ?? activeSecurityGuildId;
+  const feedback = document.querySelector("#security-feedback");
+  if (!/^\\d{17,20}$/.test(guildId)) {
+    if (feedback) feedback.textContent = "Enter a valid 17–20 digit Discord server ID.";
+    return;
+  }
+  activeSecurityGuildId = guildId;
+  try {
+    const result = await callPanel("get_guild_security", { guildId });
+    activeGuildSecurity = result.config;
+    renderPage("security");
+  } catch (error) {
+    activeGuildSecurity = null;
+    renderPage("security");
+    const notice = document.querySelector(".notice");
+    if (notice) notice.textContent = "Could not load server settings: " + error.message;
+  }
+}
+
+async function saveGuildSecurity() {
+  if (!activeGuildSecurity || !activeSecurityGuildId) return;
+  const readNumber = (id) => Number(document.querySelector("#" + id)?.value);
+  const readToggle = (id) => Boolean(document.querySelector("#" + id)?.checked);
+  const readChannel = (id) => document.querySelector("#" + id)?.value.trim() || null;
+  const config = {
+    antiRaid: { enabled: readToggle("sec-raid-enabled"), joinThreshold: readNumber("sec-raid-threshold"), windowSeconds: readNumber("sec-raid-window"), alertChannelId: readChannel("sec-raid-channel") },
+    antiNuke: { enabled: readToggle("sec-nuke-enabled"), eventThreshold: readNumber("sec-nuke-threshold"), windowSeconds: readNumber("sec-nuke-window"), alertChannelId: readChannel("sec-nuke-channel") },
+    autoMod: { enabled: readToggle("sec-automod-enabled"), messageLimit: readNumber("sec-automod-limit"), windowSeconds: readNumber("sec-automod-window"), mentionLimit: readNumber("sec-automod-mentions"), alertChannelId: readChannel("sec-automod-channel") },
+    joinGate: { enabled: readToggle("sec-joingate-enabled"), minimumAccountAgeDays: readNumber("sec-joingate-age"), flagBots: readToggle("sec-joingate-bots"), alertChannelId: readChannel("sec-joingate-channel") },
+    lockdown: { enabled: readToggle("sec-lockdown-enabled"), logChannelId: readChannel("sec-lockdown-channel") }
+  };
+  const button = document.querySelector("#save-security");
+  const feedback = document.querySelector("#security-feedback");
+  if (button) button.disabled = true;
+  if (feedback) feedback.textContent = "Saving server security settings…";
+  try {
+    const result = await callPanel("update_guild_security", { guildId: activeSecurityGuildId, config });
+    activeGuildSecurity = result.config;
+    renderPage("security");
+    const status = document.querySelector("#security-feedback");
+    if (status) status.textContent = "Server security settings saved.";
+  } catch (error) {
+    if (feedback) feedback.textContent = "Could not save: " + error.message;
+    if (button) button.disabled = false;
+  }
+}
+
 function renderPlaceholder(page) {
   const pages = {
     permissions: ["Permissions", "Review command access and administrator permissions.", "Permission management will be added after command settings are connected."],
@@ -180,10 +289,10 @@ async function saveVerification() {
   }
 }
 function renderPage(page = "overview") {
-  renderShell(page === "overview" ? renderOverview() : page === "commands" ? renderCommands() : page === "verification" ? renderVerification() : renderPlaceholder(page));
+  renderShell(page === "overview" ? renderOverview() : page === "commands" ? renderCommands() : page === "verification" ? renderVerification() : page === "security" ? renderSecurity() : renderPlaceholder(page));
   document.querySelector("#refresh")?.addEventListener("click", loadDashboard);
   document.querySelector("#save-commands")?.addEventListener("click", saveCommands);
-  document.querySelector("#save-verification")?.addEventListener("click", saveVerification);
+  document.querySelector("#save-verification")?.addEventListener("click", saveVerification);\n  document.querySelector("#load-security")?.addEventListener("click", loadGuildSecurity);\n  document.querySelector("#security-guild-id")?.addEventListener("keydown", (event) => { if (event.key === "Enter") loadGuildSecurity(); });\n  document.querySelector("#save-security")?.addEventListener("click", saveGuildSecurity);
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => renderPage(button.dataset.page)));
 }
 
