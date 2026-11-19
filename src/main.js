@@ -59,6 +59,9 @@ function renderShell(content = "", currentPage = "overview") {
           <a class="nav-link" href="#commands"><span class="nav-icon">⌘</span> Commands <span class="nav-count">4</span></a>
           <a class="nav-link" href="#verification"><span class="nav-icon">◈</span> Verification</a>
           <a class="nav-link ${currentPage === "security" ? "active" : ""}" href="#security"><span class="nav-icon">⬡</span> Server security</a>
+          <a class="nav-link ${currentPage === "servers" ? "active" : ""}" href="#servers"><span class="nav-icon">◎</span> Servers</a>
+          <a class="nav-link ${currentPage === "roles" ? "active" : ""}" href="#roles"><span class="nav-icon">♙</span> Roles</a>
+          <a class="nav-link ${currentPage === "channels" ? "active" : ""}" href="#channels"><span class="nav-icon">▤</span> Channels</a>
           <a class="nav-link ${currentPage === "permissions" ? "active" : ""}" href="#permissions"><span class="nav-icon">♙</span> Permissions</a>
           <a class="nav-link ${currentPage === "activity" ? "active" : ""}" href="#activity"><span class="nav-icon">◷</span> Activity log</a>
         </nav>
@@ -151,7 +154,7 @@ function defaultGuildSecurity() {
 
 function renderSecurity() {
   const security = activeGuildSecurity ?? defaultGuildSecurity();
-  const channelInput = (id, label, value) => `<div class="field-setting"><label for="${id}">${label}</label><input id="${id}" inputmode="numeric" placeholder="Optional Discord channel ID" value="${escapeHtml(value ?? "")}" /></div>`;
+  const channelInput = (id, label, value) => { const channels = (guildResources?.channels ?? []).filter((channel) => [0, 5].includes(channel.type)); return `<div class="field-setting"><label for="${id}">${label}</label><select id="${id}"><option value="">No channel selected</option>${channels.map((channel) => `<option value="${escapeHtml(channel.id)}" ${channel.id === value ? "selected" : ""}># ${escapeHtml(channel.name)}</option>`).join("")}</select><p>Choose from the automatically synchronized text channels.</p></div>`; };
   const toggle = (id, label, description, checked) => `<label class="setting-row"><span class="setting-copy"><strong>${label}</strong><span>${description}</span></span><input class="setting-toggle" id="${id}" type="checkbox" ${checked ? "checked" : ""} /><span class="toggle-ui" aria-hidden="true"></span></label>`;
   const number = (id, label, value, min, max) => `<div class="field-setting"><label for="${id}">${label}</label><input id="${id}" type="number" min="${min}" max="${max}" value="${value}" /></div>`;
   return `
@@ -233,6 +236,7 @@ async function loadGuildSecurity(guildId = document.querySelector("#security-gui
     const result = await callPanel("get_guild_security", { guildId });
     activeGuildSecurity = result.config;
     renderPage("security");
+    if (!guildResources || activeSecurityGuildId !== guildId) await loadGuildResources(guildId);
   } catch (error) {
     const notice = document.querySelector(".notice");
     if (notice) notice.textContent = "Could not load server settings: " + error.message;
@@ -378,12 +382,12 @@ function renderPage(page = "overview") {
   document.querySelector("#security-guild-select")?.addEventListener("change", (event) => loadGuildSecurity(event.currentTarget.value));
   document.querySelector("#resource-guild-select")?.addEventListener("change", (event) => loadGuildResources(event.currentTarget.value));
   document.querySelector("#refresh-resources")?.addEventListener("click", () => loadGuildResources(activeSecurityGuildId));
-  document.querySelectorAll("[data-open-server]").forEach((button) => button.addEventListener("click", () => { activeSecurityGuildId = button.dataset.openServer; guildResources = null; renderPage("roles"); void loadGuildResources(activeSecurityGuildId); }));
+  document.querySelectorAll("[data-open-server]").forEach((button) => button.addEventListener("click", () => { activeSecurityGuildId = button.dataset.openServer; guildResources = null; renderPage("roles"); }));
   document.querySelector("#refresh-guilds")?.addEventListener("click", () => loadGuildDirectory(true));
   document.querySelector("#save-security")?.addEventListener("click", saveGuildSecurity);
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => renderPage(button.dataset.page)));
   if (["security", "servers", "roles", "channels"].includes(page) && !guildDirectoryLoaded) void loadGuildDirectory();
-  if (["roles", "channels"].includes(page) && guildDirectoryLoaded && activeSecurityGuildId && !guildResources && !guildResourcesLoading) void loadGuildResources(activeSecurityGuildId);
+  if (["roles", "channels", "security"].includes(page) && guildDirectoryLoaded && activeSecurityGuildId && !guildResources && !guildResourcesLoading) void loadGuildResources(activeSecurityGuildId);
 }
 
 async function callPanel(action, payload = {}) {
