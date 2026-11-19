@@ -56,7 +56,8 @@ function renderShell(content = "") {
         <nav class="nav-list">
           <a class="nav-link active" href="#overview"><span class="nav-icon">▦</span> Overview</a>
           <a class="nav-link" href="#commands"><span class="nav-icon">⌘</span> Commands <span class="nav-count">4</span></a>
-          <a class="nav-link" href="#verification"><span class="nav-icon">◈</span> Verification</a>\n          <a class="nav-link" href="#security"><span class="nav-icon">⬡</span> Server security</a>
+          <a class="nav-link" href="#verification"><span class="nav-icon">◈</span> Verification</a>
+          <a class="nav-link" href="#security"><span class="nav-icon">⬡</span> Server security</a>
           <a class="nav-link" href="#permissions"><span class="nav-icon">♙</span> Permissions</a>
           <a class="nav-link" href="#activity"><span class="nav-icon">◷</span> Activity log</a>
         </nav>
@@ -292,7 +293,10 @@ function renderPage(page = "overview") {
   renderShell(page === "overview" ? renderOverview() : page === "commands" ? renderCommands() : page === "verification" ? renderVerification() : page === "security" ? renderSecurity() : renderPlaceholder(page));
   document.querySelector("#refresh")?.addEventListener("click", loadDashboard);
   document.querySelector("#save-commands")?.addEventListener("click", saveCommands);
-  document.querySelector("#save-verification")?.addEventListener("click", saveVerification);\n  document.querySelector("#load-security")?.addEventListener("click", loadGuildSecurity);\n  document.querySelector("#security-guild-id")?.addEventListener("keydown", (event) => { if (event.key === "Enter") loadGuildSecurity(); });\n  document.querySelector("#save-security")?.addEventListener("click", saveGuildSecurity);
+  document.querySelector("#save-verification")?.addEventListener("click", saveVerification);
+  document.querySelector("#load-security")?.addEventListener("click", loadGuildSecurity);
+  document.querySelector("#security-guild-id")?.addEventListener("keydown", (event) => { if (event.key === "Enter") loadGuildSecurity(); });
+  document.querySelector("#save-security")?.addEventListener("click", saveGuildSecurity);
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => renderPage(button.dataset.page)));
 }
 
