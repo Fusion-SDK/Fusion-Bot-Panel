@@ -24,3 +24,9 @@ jobs:
         run: npm run check
       - name: Build dashboard
         run: npm run build
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Check panel Edge Function
+        run: deno check supabase/functions/panel-admin/index.ts
