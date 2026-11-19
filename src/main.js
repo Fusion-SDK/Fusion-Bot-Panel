@@ -214,6 +214,7 @@ async function loadGuildDirectory(force = false) {
     if (!guildDirectory.some((guild) => guild.guild_id === activeSecurityGuildId)) {
       activeSecurityGuildId = guildDirectory[0]?.guild_id ?? "";
       activeGuildSecurity = null;
+      guildResources = null;
     }
     renderPage(activePanelPage);
     if (activeSecurityGuildId && activePanelPage === "security" && !activeGuildSecurity) await loadGuildSecurity(activeSecurityGuildId);
@@ -229,6 +230,7 @@ async function loadGuildDirectory(force = false) {
 
 async function loadGuildSecurity(guildId = document.querySelector("#security-guild-select")?.value) {
   if (!guildId || !guildDirectory.some((guild) => guild.guild_id === guildId)) return;
+  if (activeSecurityGuildId !== guildId) guildResources = null;
   activeSecurityGuildId = guildId;
   activeGuildSecurity = null;
   renderPage("security");
