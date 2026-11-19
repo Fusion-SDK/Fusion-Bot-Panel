@@ -12,6 +12,7 @@ let supabase = null;
 let currentSession = null;
 let dashboardData = null;
 let busy = false;
+let activePanelPage = "overview";
 const configured = Boolean(config.url && config.anonKey);
 
 if (configured) {
@@ -46,7 +47,7 @@ function renderLogin(message = "") {
   document.querySelector("#login-form")?.addEventListener("submit", signIn);
 }
 
-function renderShell(content = "") {
+function renderShell(content = "", currentPage = "overview") {
   const email = currentSession?.user?.email ?? "Administrator";
   app.innerHTML = `
     <div class="app-shell">
@@ -54,16 +55,16 @@ function renderShell(content = "") {
         <div class="sidebar-brand"><div class="brand-mark small">F</div><div><strong>FUSION</strong><span>CONTROL PANEL</span></div></div>
         <div class="workspace-label">WORKSPACE</div>
         <nav class="nav-list">
-          <a class="nav-link active" href="#overview"><span class="nav-icon">▦</span> Overview</a>
+          <a class="nav-link ${currentPage === "overview" ? "active" : ""}" href="#overview"><span class="nav-icon">▦</span> Overview</a>
           <a class="nav-link" href="#commands"><span class="nav-icon">⌘</span> Commands <span class="nav-count">4</span></a>
           <a class="nav-link" href="#verification"><span class="nav-icon">◈</span> Verification</a>
-          <a class="nav-link" href="#security"><span class="nav-icon">⬡</span> Server security</a>
-          <a class="nav-link" href="#permissions"><span class="nav-icon">♙</span> Permissions</a>
-          <a class="nav-link" href="#activity"><span class="nav-icon">◷</span> Activity log</a>
+          <a class="nav-link ${currentPage === "security" ? "active" : ""}" href="#security"><span class="nav-icon">⬡</span> Server security</a>
+          <a class="nav-link ${currentPage === "permissions" ? "active" : ""}" href="#permissions"><span class="nav-icon">♙</span> Permissions</a>
+          <a class="nav-link ${currentPage === "activity" ? "active" : ""}" href="#activity"><span class="nav-icon">◷</span> Activity log</a>
         </nav>
         <div class="sidebar-bottom"><div class="secure-label"><span class="status-dot"></span> SECURE SESSION</div><div class="profile-row"><div class="avatar">${escapeHtml(email.slice(0, 1).toUpperCase())}</div><div class="profile-copy"><strong>${escapeHtml(email)}</strong><span>Panel administrator</span></div><button class="icon-button" id="sign-out" aria-label="Sign out" title="Sign out">↗</button></div></div>
       </aside>
-      <main class="main-area"><header class="topbar"><div class="breadcrumb">Fusion <span>/</span> <strong>Overview</strong></div><div class="topbar-right"><span class="private-pill"><span></span> PRIVATE PANEL</span><span class="topbar-divider"></span><span class="topbar-caption">ADMIN CONSOLE</span></div></header><section class="page-content">${content}</section></main>
+      <main class="main-area"><header class="topbar"><div class="breadcrumb">Fusion <span>/</span> <strong>${escapeHtml(currentPage.charAt(0).toUpperCase() + currentPage.slice(1))}</strong></div><div class="topbar-right"><span class="private-pill"><span></span> PRIVATE PANEL</span><span class="topbar-divider"></span><span class="topbar-caption">ADMIN CONSOLE</span></div></header><section class="page-content">${content}</section></main>
     </div>`;
   document.querySelector("#sign-out")?.addEventListener("click", signOut);
   document.querySelectorAll(".nav-link").forEach((link) => link.addEventListener("click", (event) => {
@@ -135,6 +136,8 @@ let activeSecurityGuildId = "";
 let guildDirectory = [];
 let guildDirectoryLoading = false;
 let guildDirectoryLoaded = false;
+let guildResources = null;
+let guildResourcesLoading = false;
 
 function defaultGuildSecurity() {
   return {
@@ -209,8 +212,9 @@ async function loadGuildDirectory(force = false) {
       activeSecurityGuildId = guildDirectory[0]?.guild_id ?? "";
       activeGuildSecurity = null;
     }
-    renderPage("security");
-    if (activeSecurityGuildId && !activeGuildSecurity) await loadGuildSecurity(activeSecurityGuildId);
+    renderPage(activePanelPage);
+    if (activeSecurityGuildId && activePanelPage === "security" && !activeGuildSecurity) await loadGuildSecurity(activeSecurityGuildId);
+    if (activeSecurityGuildId && ["roles", "channels"].includes(activePanelPage)) await loadGuildResources(activeSecurityGuildId);
   } catch (error) {
     if (feedback) feedback.textContent = "Could not load the bot's server list: " + error.message;
     const notice = document.querySelector(".notice");
@@ -260,6 +264,57 @@ async function saveGuildSecurity() {
   } catch (error) {
     if (feedback) feedback.textContent = "Could not save: " + error.message;
     if (button) button.disabled = false;
+  }
+}
+
+function renderResourcePage(page) {
+  const selected = guildDirectory.find((guild) => guild.guild_id === activeSecurityGuildId);
+  const selector = guildDirectory.length ? `
+    <div class="field-setting"><label for="resource-guild-select">Select a server</label>
+      <select id="resource-guild-select">${guildDirectory.map((guild) => `<option value="${escapeHtml(guild.guild_id)}" ${guild.guild_id === activeSecurityGuildId ? "selected" : ""}>${escapeHtml(guild.name)}</option>`).join("")}</select>
+    </div>` : '<p class="empty-copy">No servers have been synchronized yet. Keep Fusion Discord online and confirm the server-directory setup.</p>';
+  if (page === "servers") {
+    const cards = guildDirectory.map((guild) => `
+      <article class="security-row"><span class="security-check">◎</span><div><strong>${escapeHtml(guild.name)}</strong><span>${Number(guild.member_count ?? 0).toLocaleString()} members · Last sync ${escapeHtml(guild.updated_at ?? "unknown")}</span></div><button class="button subtle" data-open-server="${escapeHtml(guild.guild_id)}">View resources</button></article>`).join("");
+    return `
+      <div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / SERVER DIRECTORY</div><h1>Servers</h1><p>Every Discord server currently connected to Fusion.</p></div><button class="button subtle" id="refresh-guilds">↻ Refresh</button></div>
+      <div class="notice success">Server information is synchronized automatically by the bot. Server IDs are used internally.</div>
+      <div class="settings-panel"><div class="settings-panel-head"><div><h2>Connected servers</h2><p>${guildDirectory.length} server(s) discovered</p></div></div>${cards || '<p class="empty-copy">Waiting for the bot to publish its server directory.</p>'}</div>`;
+  }
+  const rows = page === "roles" ? (guildResources?.roles ?? []).slice().sort((a,b) => b.position-a.position).map((role) => `
+    <div class="security-row"><span class="security-check" style="background:#${Number(role.color).toString(16).padStart(6,"0")}22;color:#${Number(role.color).toString(16).padStart(6,"0")}">♙</span><div><strong>${escapeHtml(role.name)}</strong><span>Position ${role.position} · Permissions bitfield ${escapeHtml(role.permissions)} · ${role.managed ? "Managed by an integration" : "Standard role"}${role.hoist ? " · Displayed separately" : ""}${role.mentionable ? " · Mentionable" : ""}</span></div></div>`).join("") : (guildResources?.channels ?? []).slice().sort((a,b) => a.position-b.position).map((channel) => {
+      const types = {0:"Text",1:"Direct message",2:"Voice",3:"Group direct message",4:"Category",5:"Announcement",10:"Announcement thread",11:"Public thread",12:"Private thread",13:"Stage",14:"Directory",15:"Forum",16:"Media"};
+      return `<div class="security-row"><span class="security-check">▤</span><div><strong>${channel.type === 4 ? "▾ " : "# "}${escapeHtml(channel.name)}</strong><span>${escapeHtml(types[channel.type] ?? "Other channel")} · Position ${channel.position}${channel.parentId ? " · Category ID " + escapeHtml(channel.parentId) : ""}${channel.topic ? " · " + escapeHtml(channel.topic) : ""}${channel.nsfw ? " · Age-restricted" : ""}</span></div></div>`;
+    }).join("");
+  const title = page === "roles" ? "Roles" : "Channels";
+  return `
+    <div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / SERVER RESOURCES</div><h1>${title}</h1><p>Browse synchronized ${page} for a selected Discord server.</p></div><button class="button subtle" id="refresh-resources">↻ Refresh</button></div>
+    <div class="notice warning">Read-only directory in this release. Changes made directly in Discord appear after the next synchronization.</div>
+    <div class="settings-panel"><div class="settings-panel-head"><div><h2>Server</h2><p>Choose from the automatically discovered server list.</p></div></div>${selector}</div>
+    <div class="settings-panel"><div class="settings-panel-head"><div><h2>${title} ${guildResources ? "(" + (page === "roles" ? guildResources.roles.length : guildResources.channels.length) + ")" : ""}</h2><p>${selected ? "Latest snapshot: " + escapeHtml(guildResources?.updatedAt ?? "not synchronized") : "Select a server to view resources."}</p></div></div>
+      ${guildResourcesLoading ? '<p class="empty-copy">Loading server resources…</p>' : rows || '<p class="empty-copy">No resource snapshot is available yet. Refresh after the bot has synchronized this server.</p>'}
+    </div>`;
+}
+
+async function loadGuildResources(guildId = activeSecurityGuildId) {
+  if (!guildId || !guildDirectory.some((guild) => guild.guild_id === guildId)) return;
+  activeSecurityGuildId = guildId;
+  guildResourcesLoading = true;
+  guildResources = null;
+  renderPage(activePanelPage);
+  try {
+    const result = await callPanel("get_guild_resources", { guildId });
+    guildResources = {
+      roles: Array.isArray(result.roles) ? result.roles : [],
+      channels: Array.isArray(result.channels) ? result.channels : [],
+      updatedAt: result.updatedAt
+    };
+  } catch (error) {
+    const notice = document.querySelector(".notice");
+    if (notice) notice.textContent = "Could not load server resources: " + error.message;
+  } finally {
+    guildResourcesLoading = false;
+    renderPage(activePanelPage);
   }
 }
 
@@ -315,15 +370,20 @@ async function saveVerification() {
   }
 }
 function renderPage(page = "overview") {
-  renderShell(page === "overview" ? renderOverview() : page === "commands" ? renderCommands() : page === "verification" ? renderVerification() : page === "security" ? renderSecurity() : renderPlaceholder(page));
+  activePanelPage = page;
+  renderShell(page === "overview" ? renderOverview() : page === "commands" ? renderCommands() : page === "verification" ? renderVerification() : page === "security" ? renderSecurity() : ["servers", "roles", "channels"].includes(page) ? renderResourcePage(page) : renderPlaceholder(page), page);
   document.querySelector("#refresh")?.addEventListener("click", loadDashboard);
   document.querySelector("#save-commands")?.addEventListener("click", saveCommands);
   document.querySelector("#save-verification")?.addEventListener("click", saveVerification);
   document.querySelector("#security-guild-select")?.addEventListener("change", (event) => loadGuildSecurity(event.currentTarget.value));
+  document.querySelector("#resource-guild-select")?.addEventListener("change", (event) => loadGuildResources(event.currentTarget.value));
+  document.querySelector("#refresh-resources")?.addEventListener("click", () => loadGuildResources(activeSecurityGuildId));
+  document.querySelectorAll("[data-open-server]").forEach((button) => button.addEventListener("click", () => { activeSecurityGuildId = button.dataset.openServer; guildResources = null; renderPage("roles"); void loadGuildResources(activeSecurityGuildId); }));
   document.querySelector("#refresh-guilds")?.addEventListener("click", () => loadGuildDirectory(true));
   document.querySelector("#save-security")?.addEventListener("click", saveGuildSecurity);
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => renderPage(button.dataset.page)));
-  if (page === "security" && !guildDirectoryLoaded) void loadGuildDirectory();
+  if (["security", "servers", "roles", "channels"].includes(page) && !guildDirectoryLoaded) void loadGuildDirectory();
+  if (["roles", "channels"].includes(page) && guildDirectoryLoaded && activeSecurityGuildId && !guildResources && !guildResourcesLoading) void loadGuildResources(activeSecurityGuildId);
 }
 
 async function callPanel(action, payload = {}) {
