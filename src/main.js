@@ -98,20 +98,92 @@ function renderOverview() {
     <div class="security-row"><span class="security-check pending">!</span><div><strong>Admin API connection</strong><span>${dashboardData ? "The panel backend responded." : "Waiting for the panel-admin Edge Function."}</span></div><span class="security-state ${dashboardData ? "" : "pending-text"}">${dashboardData ? "CONNECTED" : "PENDING"}</span></div>`;
 }
 
-function renderPlaceholder(page) {
-  const pages = {
-    commands: ["Command controls", "Manage which slash commands are available to your Discord server.", "The command configuration API will power these controls. No changes are sent from the browser directly to the database."],
-    verification: ["Verification settings", "Configure the Fusion account-linking experience.", "The existing account-linking flow remains disabled until the authenticated in-game linking screen is ready."],
-    permissions: ["Permissions", "Review command access and administrator permissions.", "Permission changes will be validated by the backend before they are saved."],
-    activity: ["Activity log", "Review administrative changes and bot events.", "Audit events will be loaded from the protected panel API."]
-  };
-  const item = pages[page] ?? pages.commands;
-  return `<div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / SETTINGS</div><h1>${item[0]}</h1><p>${item[1]}</p></div></div><div class="empty-state"><div class="empty-icon">◈</div><h2>Backend integration is next</h2><p>${item[2]}</p><span class="coming-soon">FOUNDATION IN PLACE</span></div>`;
+function renderCommands() {
+  const commands = Array.isArray(dashboardData?.commands) ? dashboardData.commands : [];
+  const rows = commands.map((command) => `
+    <label class="setting-row">
+      <span class="setting-copy"><strong>/${escapeHtml(command.name)}</strong><span>${command.name === "ping" ? "Basic bot responsiveness check." : command.name === "account-verify" ? "Start the Fusion account-linking process. Keep disabled until the in-game linking flow is ready." : command.name === "account-status" ? "Check the linked Fusion account status." : "Remove the current Fusion account link."}</span></span>
+      <input class="setting-toggle" type="checkbox" data-command="${escapeHtml(command.name)}" ${command.enabled ? "checked" : ""} />
+      <span class="toggle-ui" aria-hidden="true"></span>
+    </label>`).join("");
+  return `
+    <div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / CONFIGURATION</div><h1>Command controls</h1><p>Choose which slash commands the bot should make available.</p></div><button class="button primary" id="save-commands">Save changes</button></div>
+    <div class="notice warning">Saving updates the protected configuration. The bot will not enforce these settings until its configuration polling integration is installed.</div>
+    <div class="settings-panel"><div class="settings-panel-head"><div><h2>Slash commands</h2><p>Disabled commands should be hidden from the bot's command registration and rejected at execution time.</p></div><span class="settings-count">${commands.filter((item) => item.enabled).length} ENABLED</span></div>
+      ${rows || '<p class="empty-copy">No command configuration was returned by the backend.</p>'}
+    </div>
+    <p class="save-feedback" id="command-feedback" role="status"></p>`;
 }
 
+function renderVerification() {
+  const verification = dashboardData?.verification ?? { enabled: false, verifiedRoleId: null };
+  return `
+    <div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / CONFIGURATION</div><h1>Verification settings</h1><p>Manage the Discord role used after a Fusion account is securely linked.</p></div><button class="button primary" id="save-verification">Save changes</button></div>
+    <div class="notice warning">Account verification is currently gated off in the bot. Keep this disabled until the authenticated in-game linking flow is implemented and tested.</div>
+    <div class="settings-panel">
+      <div class="settings-panel-head"><div><h2>Account verification</h2><p>These settings are stored securely, but enabling them here does not bypass the bot's release gate.</p></div></div>
+      <label class="setting-row"><span class="setting-copy"><strong>Enable verification</strong><span>Allow the verification feature when the bot implementation is ready.</span></span><input class="setting-toggle" id="verification-enabled" type="checkbox" ${verification.enabled ? "checked" : ""} /><span class="toggle-ui" aria-hidden="true"></span></label>
+      <div class="field-setting"><label for="verified-role-id">Verified Discord role ID</label><input id="verified-role-id" inputmode="numeric" autocomplete="off" placeholder="e.g. 123456789012345678" value="${escapeHtml(verification.verifiedRoleId ?? "")}" /><p>Enter a Discord role ID, or leave blank if no role is configured.</p></div>
+    </div>
+    <p class="save-feedback" id="verification-feedback" role="status"></p>`;
+}
+
+function renderPlaceholder(page) {
+  const pages = {
+    permissions: ["Permissions", "Review command access and administrator permissions.", "Permission management will be added after command settings are connected."],
+    activity: ["Activity log", "Review administrative changes and bot events.", "Audit history will be connected in a later step."]
+  };
+  const item = pages[page] ?? pages.permissions;
+  return `<div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / SETTINGS</div><h1>${item[0]}</h1><p>${item[1]}</p></div></div><div class="empty-state"><div class="empty-icon">◈</div><h2>Next integration step</h2><p>${item[2]}</p><span class="coming-soon">FOUNDATION IN PLACE</span></div>`;
+}
+
+async function saveCommands() {
+  const feedback = document.querySelector("#command-feedback");
+  const commands = Object.fromEntries((dashboardData?.commands ?? []).map((item) => [item.name, item.enabled]));
+  document.querySelectorAll("[data-command]").forEach((input) => { commands[input.dataset.command] = input.checked; });
+  const verification = dashboardData?.verification ?? { enabled: false, verifiedRoleId: null };
+  const button = document.querySelector("#save-commands");
+  if (button) button.disabled = true;
+  if (feedback) feedback.textContent = "Saving…";
+  try {
+    const result = await callPanel("update_config", { config: { commands, verification } });
+    dashboardData.commands = Object.entries(result.config.commands).map(([name, enabled]) => ({ name, enabled }));
+    dashboardData.verification = result.config.verification;
+    renderPage("commands");
+    const status = document.querySelector("#command-feedback");
+    if (status) status.textContent = "Command settings saved.";
+  } catch (error) {
+    if (feedback) feedback.textContent = `Could not save: ${error.message}`;
+    if (button) button.disabled = false;
+  }
+}
+
+async function saveVerification() {
+  const feedback = document.querySelector("#verification-feedback");
+  const commands = Object.fromEntries((dashboardData?.commands ?? []).map((item) => [item.name, item.enabled]));
+  const enabled = document.querySelector("#verification-enabled")?.checked ?? false;
+  const roleText = document.querySelector("#verified-role-id")?.value.trim() ?? "";
+  const verification = { enabled, verifiedRoleId: roleText || null };
+  const button = document.querySelector("#save-verification");
+  if (button) button.disabled = true;
+  if (feedback) feedback.textContent = "Saving…";
+  try {
+    const result = await callPanel("update_config", { config: { commands, verification } });
+    dashboardData.commands = Object.entries(result.config.commands).map(([name, value]) => ({ name, enabled: value }));
+    dashboardData.verification = result.config.verification;
+    renderPage("verification");
+    const status = document.querySelector("#verification-feedback");
+    if (status) status.textContent = "Verification settings saved.";
+  } catch (error) {
+    if (feedback) feedback.textContent = `Could not save: ${error.message}`;
+    if (button) button.disabled = false;
+  }
+}
 function renderPage(page = "overview") {
-  renderShell(page === "overview" ? renderOverview() : renderPlaceholder(page));
+  renderShell(page === "overview" ? renderOverview() : page === "commands" ? renderCommands() : page === "verification" ? renderVerification() : renderPlaceholder(page));
   document.querySelector("#refresh")?.addEventListener("click", loadDashboard);
+  document.querySelector("#save-commands")?.addEventListener("click", saveCommands);
+  document.querySelector("#save-verification")?.addEventListener("click", saveVerification);
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => renderPage(button.dataset.page)));
 }
 
