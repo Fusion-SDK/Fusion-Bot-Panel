@@ -147,7 +147,14 @@ Deno.serve(async (request) => {
       const { error } = await admin.from("fusion_bot_guilds").upsert(guilds, { onConflict: "guild_id" });
       if (error) return json({ error: "Could not synchronize the server directory." }, 500);
     }
-    return json({ ok: true, synchronized: guilds.length });
+    const { data: existing, error: listError } = await admin.from("fusion_bot_guilds").select("guild_id");
+    if (listError) return json({ error: "Could not reconcile the server directory." }, 500);
+    const staleIds = (existing ?? []).map((entry) => entry.guild_id).filter((id) => !seen.has(id));
+    for (const staleId of staleIds) {
+      const { error } = await admin.from("fusion_bot_guilds").delete().eq("guild_id", staleId);
+      if (error) return json({ error: "Could not remove a server that the bot has left." }, 500);
+    }
+    return json({ ok: true, synchronized: guilds.length, removed: staleIds.length });
   }
 
   if (body.action === "bot_remove_guild") {

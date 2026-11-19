@@ -91,3 +91,8 @@ The Server security page stores separate settings for each Discord server ID. Ap
 The initial controls cover anti-raid, anti-nuke, AutoMod, Join Gate, and a reserved emergency-lockdown setting. The bot-side security engines in the companion FusionDiscord repository are currently monitor-only. The panel controls are configuration storage and do not by themselves activate enforcement. Configure alert channel IDs only after the bot's log-channel delivery integration is deployed.
 
 Do not enable destructive automatic responses based solely on event-rate heuristics. Anti-nuke and AutoMod detections can have false positives; moderation actions and lockdown must remain permission-checked, auditable, and recoverable.
+
+
+### Automatic server directory setup
+
+Apply `supabase/migrations/0003_fusion_bot_guild_directory.sql` and redeploy the `panel-admin` Edge Function. The FusionDiscord bot then publishes its current server list on startup and every 60 seconds, and after server joins/leaves. The dashboard's Server security page reads this directory and presents a server selector; no one needs to manually enter server IDs. The bot reconciles the full list, so servers it has left disappear from the panel.
