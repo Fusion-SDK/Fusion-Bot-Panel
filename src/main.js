@@ -132,6 +132,9 @@ function renderVerification() {
 
 let activeGuildSecurity = null;
 let activeSecurityGuildId = "";
+let guildDirectory = [];
+let guildDirectoryLoading = false;
+let guildDirectoryLoaded = false;
 
 function defaultGuildSecurity() {
   return {
@@ -152,8 +155,13 @@ function renderSecurity() {
     <div class="page-heading"><div><div class="eyebrow">FUSION SECURITY / SERVER CONFIGURATION</div><h1>Server security</h1><p>Configure independent protection settings for each Discord server.</p></div><button class="button primary" id="save-security">Save settings</button></div>
     <div class="notice warning">All security engines currently run in monitor-only mode. They report suspicious patterns but do not automatically punish members or change server permissions.</div>
     <div class="settings-panel">
-      <div class="settings-panel-head"><div><h2>Choose a server</h2><p>Enter the Discord server ID. Settings are isolated per server.</p></div></div>
-      <div class="field-setting"><label for="security-guild-id">Discord server ID</label><div class="guild-picker"><input id="security-guild-id" inputmode="numeric" placeholder="17–20 digit server ID" value="${escapeHtml(activeSecurityGuildId)}" /><button class="button subtle" id="load-security">Load</button></div></div>
+      <div class="settings-panel-head"><div><h2>Your Discord servers</h2><p>Automatically discovered from the servers where Fusion Discord is installed.</p></div><button class="button subtle" id="refresh-guilds">Refresh</button></div>
+      <div class="field-setting"><label for="security-guild-select">Select a server</label>
+        <select id="security-guild-select" ${guildDirectory.length ? "" : "disabled"}>
+          ${guildDirectory.length ? guildDirectory.map((guild) => `<option value="${escapeHtml(guild.guild_id)}" ${guild.guild_id === activeSecurityGuildId ? "selected" : ""}>${escapeHtml(guild.name)} · ${Number(guild.member_count ?? 0).toLocaleString()} members</option>`).join("") : '<option value="">No servers found yet</option>'}
+        </select>
+      </div>
+      ${guildDirectory.length ? "" : '<p class="empty-copy">The bot has not reported any servers yet. Make sure it is online and the server-directory migration and Edge Function are deployed.</p>'}
     </div>
     ${activeGuildSecurity ? `
     <div class="settings-panel"><div class="settings-panel-head"><div><h2>Anti-Raid</h2><p>Detect unusually fast member joins.</p></div></div>
@@ -189,22 +197,39 @@ function renderSecurity() {
   `;
 }
 
-async function loadGuildSecurity() {
-  const input = document.querySelector("#security-guild-id");
-  const guildId = input?.value.trim() ?? activeSecurityGuildId;
+async function loadGuildDirectory(force = false) {
+  if (guildDirectoryLoading || (guildDirectoryLoaded && !force)) return;
+  guildDirectoryLoading = true;
   const feedback = document.querySelector("#security-feedback");
-  if (!/^\\d{17,20}$/.test(guildId)) {
-    if (feedback) feedback.textContent = "Enter a valid 17–20 digit Discord server ID.";
-    return;
+  try {
+    const result = await callPanel("get_guilds");
+    guildDirectory = Array.isArray(result.guilds) ? result.guilds : [];
+    guildDirectoryLoaded = true;
+    if (!guildDirectory.some((guild) => guild.guild_id === activeSecurityGuildId)) {
+      activeSecurityGuildId = guildDirectory[0]?.guild_id ?? "";
+      activeGuildSecurity = null;
+    }
+    renderPage("security");
+    if (activeSecurityGuildId && !activeGuildSecurity) await loadGuildSecurity(activeSecurityGuildId);
+  } catch (error) {
+    if (feedback) feedback.textContent = "Could not load the bot's server list: " + error.message;
+    const notice = document.querySelector(".notice");
+    if (notice) notice.textContent = "Could not load Discord servers: " + error.message;
+  } finally {
+    guildDirectoryLoading = false;
   }
+}
+
+async function loadGuildSecurity(guildId = document.querySelector("#security-guild-select")?.value) {
+  if (!guildId || !guildDirectory.some((guild) => guild.guild_id === guildId)) return;
   activeSecurityGuildId = guildId;
+  activeGuildSecurity = null;
+  renderPage("security");
   try {
     const result = await callPanel("get_guild_security", { guildId });
     activeGuildSecurity = result.config;
     renderPage("security");
   } catch (error) {
-    activeGuildSecurity = null;
-    renderPage("security");
     const notice = document.querySelector(".notice");
     if (notice) notice.textContent = "Could not load server settings: " + error.message;
   }
@@ -294,10 +319,11 @@ function renderPage(page = "overview") {
   document.querySelector("#refresh")?.addEventListener("click", loadDashboard);
   document.querySelector("#save-commands")?.addEventListener("click", saveCommands);
   document.querySelector("#save-verification")?.addEventListener("click", saveVerification);
-  document.querySelector("#load-security")?.addEventListener("click", loadGuildSecurity);
-  document.querySelector("#security-guild-id")?.addEventListener("keydown", (event) => { if (event.key === "Enter") loadGuildSecurity(); });
+  document.querySelector("#security-guild-select")?.addEventListener("change", (event) => loadGuildSecurity(event.currentTarget.value));
+  document.querySelector("#refresh-guilds")?.addEventListener("click", () => loadGuildDirectory(true));
   document.querySelector("#save-security")?.addEventListener("click", saveGuildSecurity);
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => renderPage(button.dataset.page)));
+  if (page === "security" && !guildDirectoryLoaded) void loadGuildDirectory();
 }
 
 async function callPanel(action, payload = {}) {

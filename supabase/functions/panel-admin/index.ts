@@ -92,7 +92,7 @@ Deno.serve(async (request) => {
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
 
   const raw = await request.text();
-  if (new TextEncoder().encode(raw).length > 8192) return json({ error: "Request too large." }, 413);
+  if (new TextEncoder().encode(raw).length > 1_048_576) return json({ error: "Request too large." }, 413);
 
   let body: Record<string, unknown>;
   try {
@@ -116,6 +116,50 @@ Deno.serve(async (request) => {
   });
 
   // The bot uses its existing shared secret; it never receives service-role credentials.
+
+  if (body.action === "bot_sync_guilds") {
+    const supplied = request.headers.get("x-fusion-bot-secret") ?? "";
+    if (!safeEqual(supplied, botSecret)) return json({ error: "Unauthorized." }, 401);
+    if (!Array.isArray(body.guilds) || body.guilds.length > 5000) return json({ error: "Invalid server directory payload." }, 400);
+    const guilds = [];
+    const seen = new Set<string>();
+    for (const item of body.guilds) {
+      if (!item || typeof item !== "object") return json({ error: "Invalid server entry." }, 400);
+      const value = item as Record<string, unknown>;
+      if (typeof value.id !== "string" || !/^\d{17,20}$/.test(value.id) || seen.has(value.id)) return json({ error: "Invalid or duplicate server ID." }, 400);
+      if (typeof value.name !== "string" || value.name.trim().length < 1 || value.name.length > 100) return json({ error: "Invalid server name." }, 400);
+      if (value.memberCount !== null && value.memberCount !== undefined && (!Number.isInteger(value.memberCount) || Number(value.memberCount) < 0)) return json({ error: "Invalid member count." }, 400);
+      const iconUrl = value.iconUrl ?? null;
+      if (iconUrl !== null && (typeof iconUrl !== "string" || iconUrl.length > 500 || !/^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\//.test(iconUrl))) return json({ error: "Invalid server icon URL." }, 400);
+      const joinedAt = value.joinedAt ?? null;
+      if (joinedAt !== null && (typeof joinedAt !== "string" || Number.isNaN(Date.parse(joinedAt)))) return json({ error: "Invalid bot join timestamp." }, 400);
+      seen.add(value.id);
+      guilds.push({
+        guild_id: value.id,
+        name: value.name.trim(),
+        icon_url: iconUrl,
+        member_count: value.memberCount ?? null,
+        bot_joined_at: joinedAt,
+        updated_at: new Date().toISOString()
+      });
+    }
+    if (guilds.length > 0) {
+      const { error } = await admin.from("fusion_bot_guilds").upsert(guilds, { onConflict: "guild_id" });
+      if (error) return json({ error: "Could not synchronize the server directory." }, 500);
+    }
+    return json({ ok: true, synchronized: guilds.length });
+  }
+
+  if (body.action === "bot_remove_guild") {
+    const supplied = request.headers.get("x-fusion-bot-secret") ?? "";
+    if (!safeEqual(supplied, botSecret)) return json({ error: "Unauthorized." }, 401);
+    const guildId = body.guildId;
+    if (typeof guildId !== "string" || !/^\d{17,20}$/.test(guildId)) return json({ error: "Invalid server ID." }, 400);
+    const { error } = await admin.from("fusion_bot_guilds").delete().eq("guild_id", guildId);
+    if (error) return json({ error: "Could not remove the server from the directory." }, 500);
+    return json({ ok: true });
+  }
+
   if (body.action === "bot_get_config") {
     const supplied = request.headers.get("x-fusion-bot-secret") ?? "";
     if (!safeEqual(supplied, botSecret)) return json({ error: "Unauthorized." }, 401);
@@ -146,6 +190,15 @@ Deno.serve(async (request) => {
   const { data: userData, error: userError } = await userClient.auth.getUser(match[1]);
   if (userError || !userData.user || userData.user.id !== adminUserId) {
     return json({ error: "You are not authorized to administer this bot." }, 403);
+  }
+
+
+  if (body.action === "get_guilds") {
+    const { data, error } = await admin.from("fusion_bot_guilds")
+      .select("guild_id, name, icon_url, member_count, bot_joined_at, updated_at")
+      .order("name", { ascending: true });
+    if (error) return json({ error: "Could not load the bot server directory." }, 500);
+    return json({ guilds: data ?? [] });
   }
 
   if (body.action === "get_dashboard") {
