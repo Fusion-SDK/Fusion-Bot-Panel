@@ -52,7 +52,7 @@ The first backend foundation is included in this repository:
 - Edge Function: `supabase/functions/panel-admin/index.ts`
 - Function config: `supabase/config.toml`
 
-Apply the SQL migration in the Supabase SQL Editor, then deploy the `panel-admin` Edge Function.
+Apply the SQL migrations in order in the Supabase SQL Editor, then deploy the `panel-admin` Edge Function. The server directory requires `0003_fusion_bot_guild_directory.sql`; role and channel snapshots additionally require `0004_fusion_bot_guild_resources.sql`.
 
 Configure these Edge Function secrets in Supabase:
 
@@ -96,3 +96,12 @@ Do not enable destructive automatic responses based solely on event-rate heurist
 ### Automatic server directory setup
 
 Apply `supabase/migrations/0003_fusion_bot_guild_directory.sql` and redeploy the `panel-admin` Edge Function. The FusionDiscord bot then publishes its current server list on startup and every 60 seconds, and after server joins/leaves. The dashboard's Server security page reads this directory and presents a server selector; no one needs to manually enter server IDs. The bot reconciles the full list, so servers it has left disappear from the panel.
+
+
+## Shared server resources
+
+Apply `supabase/migrations/0004_fusion_bot_guild_resources.sql` after the server-directory migration. Redeploy the updated `panel-admin` Edge Function. The companion FusionDiscord bot publishes role and channel snapshots using the existing bot secret; no additional credentials are needed.
+
+The creator panel exposes the same discovered server list to the Servers, Roles, Channels, and Server security pages. Role snapshots include role name, color, position, permissions bitfield, and managed/mentionable/hoist flags. Channel snapshots include name, type, category relationship, position, topic, and age-restricted flag.
+
+Resource snapshots are read-only. This avoids giving a browser the ability to change server permissions or delete Discord resources. Any future write controls must call the bot through a server-side action endpoint, verify the actor and the bot's Discord permissions, reject managed roles and protected channels, and write an audit record.
