@@ -157,6 +157,56 @@ Deno.serve(async (request) => {
     return json({ ok: true, synchronized: guilds.length, removed: staleIds.length });
   }
 
+  if (body.action === "bot_sync_guild_resources") {
+    const supplied = request.headers.get("x-fusion-bot-secret") ?? "";
+    if (!safeEqual(supplied, botSecret)) return json({ error: "Unauthorized." }, 401);
+    if (!Array.isArray(body.guilds) || body.guilds.length > 5000) return json({ error: "Invalid resource directory payload." }, 400);
+    const snapshots = [];
+    const seen = new Set<string>();
+    for (const item of body.guilds) {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return json({ error: "Invalid server resource entry." }, 400);
+      const value = item as Record<string, unknown>;
+      if (typeof value.guildId !== "string" || !/^\d{17,20}$/.test(value.guildId) || seen.has(value.guildId)) return json({ error: "Invalid or duplicate server ID." }, 400);
+      if (!Array.isArray(value.roles) || value.roles.length > 250 || !Array.isArray(value.channels) || value.channels.length > 500) return json({ error: "Invalid role or channel collection." }, 400);
+      const roles = [];
+      for (const role of value.roles) {
+        if (!role || typeof role !== "object" || Array.isArray(role)) return json({ error: "Invalid role entry." }, 400);
+        const r = role as Record<string, unknown>;
+        if (typeof r.id !== "string" || !/^\d{17,20}$/.test(r.id) ||
+            typeof r.name !== "string" || r.name.length < 1 || r.name.length > 100 ||
+            !Number.isInteger(r.color) || Number(r.color) < 0 || Number(r.color) > 16777215 ||
+            !Number.isInteger(r.position) || Number(r.position) < 0 || Number(r.position) > 250 ||
+            typeof r.permissions !== "string" || !/^\d{1,30}$/.test(r.permissions) ||
+            typeof r.managed !== "boolean" || typeof r.mentionable !== "boolean" || typeof r.hoist !== "boolean") {
+          return json({ error: "Invalid role metadata." }, 400);
+        }
+        roles.push({ id: r.id, name: r.name, color: r.color, position: r.position, permissions: r.permissions, managed: r.managed, mentionable: r.mentionable, hoist: r.hoist });
+      }
+      const channels = [];
+      for (const channel of value.channels) {
+        if (!channel || typeof channel !== "object" || Array.isArray(channel)) return json({ error: "Invalid channel entry." }, 400);
+        const c = channel as Record<string, unknown>;
+        if (typeof c.id !== "string" || !/^\d{17,20}$/.test(c.id) ||
+            typeof c.name !== "string" || c.name.length < 1 || c.name.length > 100 ||
+            !Number.isInteger(c.type) || Number(c.type) < 0 || Number(c.type) > 16 ||
+            (c.parentId !== null && c.parentId !== undefined && (typeof c.parentId !== "string" || !/^\d{17,20}$/.test(c.parentId))) ||
+            !Number.isInteger(c.position) || Number(c.position) < -1 || Number(c.position) > 500 ||
+            (c.topic !== null && c.topic !== undefined && (typeof c.topic !== "string" || c.topic.length > 1024)) ||
+            typeof c.nsfw !== "boolean") {
+          return json({ error: "Invalid channel metadata." }, 400);
+        }
+        channels.push({ id: c.id, name: c.name, type: c.type, parentId: c.parentId ?? null, position: c.position, topic: c.topic ?? null, nsfw: c.nsfw });
+      }
+      seen.add(value.guildId);
+      snapshots.push({ guild_id: value.guildId, roles, channels, updated_at: new Date().toISOString() });
+    }
+    if (snapshots.length > 0) {
+      const { error } = await admin.from("fusion_bot_guild_resources").upsert(snapshots, { onConflict: "guild_id" });
+      if (error) return json({ error: "Could not synchronize server resources." }, 500);
+    }
+    return json({ ok: true, synchronized: snapshots.length });
+  }
+
   if (body.action === "bot_remove_guild") {
     const supplied = request.headers.get("x-fusion-bot-secret") ?? "";
     if (!safeEqual(supplied, botSecret)) return json({ error: "Unauthorized." }, 401);
@@ -199,6 +249,15 @@ Deno.serve(async (request) => {
     return json({ error: "You are not authorized to administer this bot." }, 403);
   }
 
+
+  if (body.action === "get_guild_resources") {
+    const guildId = body.guildId;
+    if (typeof guildId !== "string" || !/^\d{17,20}$/.test(guildId)) return json({ error: "A valid Discord server ID is required." }, 400);
+    const { data, error } = await admin.from("fusion_bot_guild_resources")
+      .select("roles, channels, updated_at").eq("guild_id", guildId).maybeSingle();
+    if (error) return json({ error: "Could not load server resources." }, 500);
+    return json({ guildId, roles: data?.roles ?? [], channels: data?.channels ?? [], updatedAt: data?.updated_at ?? null });
+  }
 
   if (body.action === "get_guilds") {
     const { data, error } = await admin.from("fusion_bot_guilds")
