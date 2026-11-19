@@ -48,7 +48,7 @@ npm run dev
 
 The first backend foundation is included in this repository:
 
-- Migration: `supabase/migrations/0001_fusion_panel_config.sql`
+- Migration: `supabase/migrations/0001_fusion_panel_config.sql`\n- Per-server security migration: `supabase/migrations/0002_fusion_guild_security.sql`
 - Edge Function: `supabase/functions/panel-admin/index.ts`
 - Function config: `supabase/config.toml`
 
@@ -83,3 +83,11 @@ Do not deploy this dashboard to a public URL until the access gateway and backen
 - Bot status and server count are placeholders until a trusted bot heartbeat is implemented.
 - Command settings are stored securely, but the bot does not yet fetch and enforce them.
 - Account verification remains disabled until the authenticated in-game linking flow is implemented and deployed.
+
+## Fusion Security dashboard
+
+The Server security page stores separate settings for each Discord server ID. Apply `0002_fusion_guild_security.sql` before using it. The owner-only `panel-admin` function validates all numeric ranges and channel IDs; browser clients have no direct table access.
+
+The initial controls cover anti-raid, anti-nuke, AutoMod, Join Gate, and a reserved emergency-lockdown setting. The bot-side security engines in the companion FusionDiscord repository are currently monitor-only. The panel controls are configuration storage and do not by themselves activate enforcement. Configure alert channel IDs only after the bot's log-channel delivery integration is deployed.
+
+Do not enable destructive automatic responses based solely on event-rate heuristics. Anti-nuke and AutoMod detections can have false positives; moderation actions and lockdown must remain permission-checked, auditable, and recoverable.
