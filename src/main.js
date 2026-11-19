@@ -375,6 +375,22 @@ async function saveVerification() {
     if (button) button.disabled = false;
   }
 }
+const PANEL_PAGES = new Set(["overview", "commands", "verification", "security", "servers", "roles", "channels", "permissions", "activity"]);
+
+function getRoutePage() {
+  const requested = window.location.hash.replace(/^#/, "").trim().toLowerCase();
+  return PANEL_PAGES.has(requested) ? requested : "overview";
+}
+
+function navigateToPage(page) {
+  const nextPage = PANEL_PAGES.has(page) ? page : "overview";
+  if (window.location.hash !== "#" + nextPage) {
+    window.location.hash = nextPage;
+  } else {
+    renderPage(nextPage);
+  }
+}
+
 function renderPage(page = "overview") {
   activePanelPage = page;
   renderShell(page === "overview" ? renderOverview() : page === "commands" ? renderCommands() : page === "verification" ? renderVerification() : page === "security" ? renderSecurity() : ["servers", "roles", "channels"].includes(page) ? renderResourcePage(page) : renderPlaceholder(page), page);
@@ -387,7 +403,7 @@ function renderPage(page = "overview") {
   document.querySelectorAll("[data-open-server]").forEach((button) => button.addEventListener("click", () => { activeSecurityGuildId = button.dataset.openServer; guildResources = null; renderPage("roles"); }));
   document.querySelector("#refresh-guilds")?.addEventListener("click", () => loadGuildDirectory(true));
   document.querySelector("#save-security")?.addEventListener("click", saveGuildSecurity);
-  document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => renderPage(button.dataset.page)));
+  document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => navigateToPage(button.dataset.page)));
   if (["security", "servers", "roles", "channels"].includes(page) && !guildDirectoryLoaded) void loadGuildDirectory();
   if (["roles", "channels", "security"].includes(page) && guildDirectoryLoaded && activeSecurityGuildId && !guildResources && !guildResourcesLoading) void loadGuildResources(activeSecurityGuildId);
 }
@@ -403,15 +419,16 @@ async function callPanel(action, payload = {}) {
 async function loadDashboard() {
   if (busy) return;
   busy = true;
-  renderPage("overview");
+  const requestedPage = getRoutePage();
+  renderPage(requestedPage);
   const refresh = document.querySelector("#refresh");
   if (refresh) refresh.disabled = true;
   try {
     dashboardData = await callPanel("get_dashboard");
-    renderPage("overview");
+    renderPage(getRoutePage());
   } catch (error) {
     dashboardData = null;
-    renderPage("overview");
+    renderPage(getRoutePage());
     const notice = document.querySelector(".notice");
     if (notice) {
       notice.className = "notice warning";
@@ -452,6 +469,9 @@ async function signOut() {
 }
 
 async function start() {
+  window.addEventListener("hashchange", () => {
+    if (currentSession) renderPage(getRoutePage());
+  });
   if (!configured) return renderLogin();
   const { data } = await supabase.auth.getSession();
   currentSession = data.session;
