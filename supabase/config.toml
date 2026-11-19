@@ -1,0 +1,4 @@
+project_id = "fusion-panel"
+
+[functions.panel-admin]
+verify_jwt = false
