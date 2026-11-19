@@ -56,6 +56,37 @@ function validateConfig(input: unknown) {
   };
 }
 
+
+const DEFAULT_GUILD_SECURITY = {
+  antiRaid: { enabled: false, joinThreshold: 6, windowSeconds: 10, alertChannelId: null },
+  antiNuke: { enabled: false, eventThreshold: 4, windowSeconds: 10, alertChannelId: null },
+  autoMod: { enabled: false, messageLimit: 6, windowSeconds: 8, mentionLimit: 5, alertChannelId: null },
+  joinGate: { enabled: false, minimumAccountAgeDays: 7, flagBots: false, alertChannelId: null },
+  lockdown: { enabled: false, logChannelId: null }
+};
+function validateGuildSecurity(input: unknown) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Security settings must be an object.");
+  const value = input as Record<string, any>;
+  const channel = (v: unknown) => v === null || (typeof v === "string" && /^\d{17,20}$/.test(v));
+  const bounded = (v: unknown, min: number, max: number) => Number.isInteger(v) && Number(v) >= min && Number(v) <= max;
+  for (const key of ["antiRaid", "antiNuke", "autoMod", "joinGate", "lockdown"]) {
+    if (!value[key] || typeof value[key].enabled !== "boolean") throw new Error(key + " enabled must be true or false.");
+  }
+  const { antiRaid, antiNuke, autoMod, joinGate, lockdown } = value;
+  if (!bounded(antiRaid.joinThreshold, 2, 100) || !bounded(antiRaid.windowSeconds, 3, 300) || !channel(antiRaid.alertChannelId)) throw new Error("Invalid anti-raid settings.");
+  if (!bounded(antiNuke.eventThreshold, 2, 100) || !bounded(antiNuke.windowSeconds, 3, 300) || !channel(antiNuke.alertChannelId)) throw new Error("Invalid anti-nuke settings.");
+  if (!bounded(autoMod.messageLimit, 3, 50) || !bounded(autoMod.windowSeconds, 3, 120) || !bounded(autoMod.mentionLimit, 2, 50) || !channel(autoMod.alertChannelId)) throw new Error("Invalid AutoMod settings.");
+  if (!bounded(joinGate.minimumAccountAgeDays, 0, 365) || typeof joinGate.flagBots !== "boolean" || !channel(joinGate.alertChannelId)) throw new Error("Invalid join-gate settings.");
+  if (!channel(lockdown.logChannelId)) throw new Error("Invalid lockdown log channel.");
+  return {
+    antiRaid: { enabled: antiRaid.enabled, joinThreshold: antiRaid.joinThreshold, windowSeconds: antiRaid.windowSeconds, alertChannelId: antiRaid.alertChannelId },
+    antiNuke: { enabled: antiNuke.enabled, eventThreshold: antiNuke.eventThreshold, windowSeconds: antiNuke.windowSeconds, alertChannelId: antiNuke.alertChannelId },
+    autoMod: { enabled: autoMod.enabled, messageLimit: autoMod.messageLimit, windowSeconds: autoMod.windowSeconds, mentionLimit: autoMod.mentionLimit, alertChannelId: autoMod.alertChannelId },
+    joinGate: { enabled: joinGate.enabled, minimumAccountAgeDays: joinGate.minimumAccountAgeDays, flagBots: joinGate.flagBots, alertChannelId: joinGate.alertChannelId },
+    lockdown: { enabled: lockdown.enabled, logChannelId: lockdown.logChannelId }
+  };
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
@@ -92,6 +123,17 @@ Deno.serve(async (request) => {
       .select("config, updated_at").eq("id", 1).single();
     if (error) return json({ error: "Could not load bot configuration." }, 500);
     return json({ config: data.config, updatedAt: data.updated_at });
+  }
+
+
+  if (body.action === "bot_get_guild_security") {
+    const supplied = request.headers.get("x-fusion-bot-secret") ?? "";
+    if (!safeEqual(supplied, botSecret)) return json({ error: "Unauthorized." }, 401);
+    const guildId = body.guildId;
+    if (typeof guildId !== "string" || !/^\d{17,20}$/.test(guildId)) return json({ error: "A valid Discord server ID is required." }, 400);
+    const { data, error } = await admin.from("fusion_guild_security").select("config, updated_at").eq("guild_id", guildId).maybeSingle();
+    if (error) return json({ error: "Could not load server security settings." }, 500);
+    return json({ guildId, config: data?.config ?? DEFAULT_GUILD_SECURITY, updatedAt: data?.updated_at ?? null });
   }
 
   // Browser actions require a valid Supabase user session and an explicit creator allowlist.
@@ -136,6 +178,28 @@ Deno.serve(async (request) => {
       details: { commands: config.commands, verification: config.verification }
     });
     return json({ ok: true, config });
+  }
+
+
+  if (body.action === "get_guild_security" || body.action === "update_guild_security") {
+    const guildId = body.guildId;
+    if (typeof guildId !== "string" || !/^\d{17,20}$/.test(guildId)) return json({ error: "Enter a valid Discord server ID." }, 400);
+    if (body.action === "get_guild_security") {
+      const { data, error } = await admin.from("fusion_guild_security").select("config, updated_at").eq("guild_id", guildId).maybeSingle();
+      if (error) return json({ error: "Could not load server security settings." }, 500);
+      return json({ guildId, config: data?.config ?? DEFAULT_GUILD_SECURITY, updatedAt: data?.updated_at ?? null });
+    }
+    let security;
+    try { security = validateGuildSecurity(body.config); }
+    catch (error) { return json({ error: error instanceof Error ? error.message : "Invalid security settings." }, 400); }
+    const { error } = await admin.from("fusion_guild_security").upsert({
+      guild_id: guildId, config: security, updated_by: userData.user.id, updated_at: new Date().toISOString()
+    }, { onConflict: "guild_id" });
+    if (error) return json({ error: "Could not save server security settings." }, 500);
+    await admin.from("fusion_panel_audit").insert({
+      actor_user_id: userData.user.id, action: "update_guild_security", details: { guildId, config: security }
+    });
+    return json({ ok: true, guildId, config: security });
   }
 
   return json({ error: "Unknown action." }, 400);
