@@ -334,24 +334,44 @@ async function loadGuildResources(guildId = activeSecurityGuildId) {
 }
 
 function renderSecurityActivity() {
-  const rows = securityEvents.map((event) => {
+  const securityRows = securityEvents.map((event) => {
     const guild = guildDirectory.find((item) => item.guild_id === event.guild_id);
-    const label = String(event.event_type ?? "security").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const label = String(event.event_type ?? "security").replaceAll("_", " ");
     const timestamp = event.created_at ? new Date(event.created_at).toLocaleString() : "Unknown time";
     return '<article class="security-row"><span class="security-check pending">!</span><div><strong>' + escapeHtml(label) + " · " + escapeHtml(guild?.name ?? event.guild_id) + '</strong><span>' + escapeHtml(event.summary) + " · " + escapeHtml(timestamp) + '</span></div><span class="security-state pending-text">' + escapeHtml(String(event.severity ?? "warning").toUpperCase()) + '</span></article>';
   }).join("");
-  return '<div class="page-heading"><div><div class="eyebrow">FUSION SECURITY / EVENT HISTORY</div><h1>Activity log</h1><p>Recent security detections reported by Fusion Discord across connected servers.</p></div><button class="button subtle" id="refresh-security-events">↻ Refresh</button></div>' +
-    '<div class="notice warning">These are detection records, not proof of misconduct. The current protection engines remain monitor-only and do not automatically punish members.</div>' +
-    '<div class="settings-panel"><div class="settings-panel-head"><div><h2>Security events</h2><p>Showing up to 100 most recent detections.</p></div></div>' + (securityEventsLoading ? '<p class="empty-copy">Loading security events…</p>' : rows || '<p class="empty-copy">No security events have been recorded yet. Events appear here when a configured monitor detects a pattern.</p>') + '</div>';
+  const auditRows = adminAuditEvents.map((event) => {
+    const action = String(event.action ?? "admin_action").replaceAll("_", " ");
+    const details = event.details && typeof event.details === "object" ? JSON.stringify(event.details) : "";
+    const summary = details.length > 220 ? details.slice(0, 217) + "…" : details;
+    const timestamp = event.created_at ? new Date(event.created_at).toLocaleString() : "Unknown time";
+    return '<article class="security-row"><span class="security-check">✓</span><div><strong>' + escapeHtml(action) + '</strong><span>' + escapeHtml(summary || "Administrative setting updated.") + " · " + escapeHtml(timestamp) + '</span></div><span class="security-state">ADMIN</span></article>';
+  }).join("");
+  return '<div class="page-heading"><div><div class="eyebrow">FUSION / AUDIT HISTORY</div><h1>Activity log</h1><p>Review security detections and changes made through the private control panel.</p></div><button class="button subtle" id="refresh-security-events">↻ Refresh</button></div>' +
+    '<div class="notice warning">Security detections are signals for review, not proof of misconduct. Current protection engines remain monitor-only.</div>' +
+    '<div class="settings-panel"><div class="settings-panel-head"><div><h2>Security detections</h2><p>Up to 100 recent bot-reported events.</p></div></div>' + (securityEventsLoading ? '<p class="empty-copy">Loading activity…</p>' : securityRows || '<p class="empty-copy">No security detections recorded yet.</p>') + '</div>' +
+    '<div class="settings-panel"><div class="settings-panel-head"><div><h2>Panel administration</h2><p>Up to 100 recent configuration changes.</p></div></div>' + (securityEventsLoading ? '<p class="empty-copy">Loading audit history…</p>' : auditRows || '<p class="empty-copy">No panel changes recorded yet.</p>') + '</div>';
 }
 
 async function loadSecurityEvents(force = false) {
   if (securityEventsLoading || (securityEventsLoaded && !force)) return;
   securityEventsLoading = true;
   renderPage("activity");
-  try { const result = await callPanel("get_security_events"); securityEvents = Array.isArray(result.events) ? result.events : []; }
-  catch (error) { const notice = document.querySelector(".notice"); if (notice) notice.textContent = "Could not load security events: " + error.message; }
-  finally { securityEventsLoading = false; securityEventsLoaded = true; renderPage("activity"); }
+  try {
+    const [securityResult, auditResult] = await Promise.all([
+      callPanel("get_security_events"),
+      callPanel("get_admin_audit")
+    ]);
+    securityEvents = Array.isArray(securityResult.events) ? securityResult.events : [];
+    adminAuditEvents = Array.isArray(auditResult.audit) ? auditResult.audit : [];
+  } catch (error) {
+    const notice = document.querySelector(".notice");
+    if (notice) notice.textContent = "Could not load activity history: " + error.message;
+  } finally {
+    securityEventsLoading = false;
+    securityEventsLoaded = true;
+    renderPage("activity");
+  }
 }
 
 function renderPlaceholder(page) {
