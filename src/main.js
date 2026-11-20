@@ -15,6 +15,7 @@ let busy = false;
 let activePanelPage = "overview";
 let securityEvents = [];
 let securityEventsLoading = false;
+let securityEventsLoaded = false;
 const configured = Boolean(config.url && config.anonKey);
 
 if (configured) {
@@ -338,13 +339,13 @@ function renderSecurityActivity() {
     '<div class="settings-panel"><div class="settings-panel-head"><div><h2>Security events</h2><p>Showing up to 100 most recent detections.</p></div></div>' + (securityEventsLoading ? '<p class="empty-copy">Loading security events…</p>' : rows || '<p class="empty-copy">No security events have been recorded yet. Events appear here when a configured monitor detects a pattern.</p>') + '</div>';
 }
 
-async function loadSecurityEvents() {
-  if (securityEventsLoading) return;
+async function loadSecurityEvents(force = false) {
+  if (securityEventsLoading || (securityEventsLoaded && !force)) return;
   securityEventsLoading = true;
   renderPage("activity");
   try { const result = await callPanel("get_security_events"); securityEvents = Array.isArray(result.events) ? result.events : []; }
   catch (error) { const notice = document.querySelector(".notice"); if (notice) notice.textContent = "Could not load security events: " + error.message; }
-  finally { securityEventsLoading = false; renderPage("activity"); }
+  finally { securityEventsLoading = false; securityEventsLoaded = true; renderPage("activity"); }
 }
 
 function renderPlaceholder(page) {
@@ -425,7 +426,7 @@ function renderPage(page = "overview") {
   document.querySelector("#refresh-resources")?.addEventListener("click", () => loadGuildResources(activeSecurityGuildId));
   document.querySelectorAll("[data-open-server]").forEach((button) => button.addEventListener("click", () => { activeSecurityGuildId = button.dataset.openServer; guildResources = null; renderPage("roles"); }));
   document.querySelector("#refresh-guilds")?.addEventListener("click", () => loadGuildDirectory(true));
-  document.querySelector("#refresh-security-events")?.addEventListener("click", loadSecurityEvents);
+  document.querySelector("#refresh-security-events")?.addEventListener("click", () => loadSecurityEvents(true));
   document.querySelector("#save-security")?.addEventListener("click", saveGuildSecurity);
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => navigateToPage(button.dataset.page)));
   if (page === "activity" && currentSession && !securityEventsLoading) void loadSecurityEvents();
