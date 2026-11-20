@@ -86,9 +86,9 @@ Do not deploy this dashboard to a public URL until the access gateway and backen
 
 ## Fusion Security dashboard
 
-The Server security page stores separate settings for each Discord server ID. Apply `0002_fusion_guild_security.sql` before using it. The owner-only `panel-admin` function validates all numeric ranges and channel IDs; browser clients have no direct table access.
+The Server security page stores separate settings for each Discord server ID. Apply `0002_fusion_guild_security.sql` and `0005_fusion_security_events.sql` before using all security features. The owner-only `panel-admin` function validates all numeric ranges and channel IDs; browser clients have no direct table access.
 
-The initial controls cover anti-raid, anti-nuke, AutoMod, Join Gate, and a reserved emergency-lockdown setting. The bot-side security engines in the companion FusionDiscord repository are currently monitor-only. The panel controls are configuration storage and do not by themselves activate enforcement. Configure alert channel IDs only after the bot's log-channel delivery integration is deployed.
+The controls cover anti-raid, anti-nuke, AutoMod, Join Gate, and a reserved emergency-lockdown setting. The Activity log page shows recent monitor detections reported by the bot. The bot-side security engines in the companion FusionDiscord repository are currently monitor-only. The panel controls are configuration storage and do not by themselves activate enforcement. Configure alert channel IDs only after the bot's log-channel delivery integration is deployed.
 
 Do not enable destructive automatic responses based solely on event-rate heuristics. Anti-nuke and AutoMod detections can have false positives; moderation actions and lockdown must remain permission-checked, auditable, and recoverable.
 
@@ -105,3 +105,8 @@ Apply `supabase/migrations/0004_fusion_bot_guild_resources.sql` after the server
 The creator panel exposes the same discovered server list to the Servers, Roles, Channels, and Server security pages. Role snapshots include role name, color, position, permissions bitfield, and managed/mentionable/hoist flags. Channel snapshots include name, type, category relationship, position, topic, and age-restricted flag.
 
 Resource snapshots are read-only. This avoids giving a browser the ability to change server permissions or delete Discord resources. Any future write controls must call the bot through a server-side action endpoint, verify the actor and the bot's Discord permissions, reject managed roles and protected channels, and write an audit record.
+
+
+## Security event history
+
+Apply `supabase/migrations/0005_fusion_security_events.sql` and redeploy `panel-admin`. The bot reports monitor detections through the bot-secret-only `bot_log_security_event` action. Authenticated panel administrators can read the latest 100 events through `get_security_events`. Events store only the server ID, detection category, short summary, severity, and timestamp; message contents and member identifiers are not persisted. The Activity log is a detection history, not an enforcement or punishment system.
