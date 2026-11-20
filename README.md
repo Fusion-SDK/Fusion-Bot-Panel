@@ -110,4 +110,4 @@ Apply `supabase/migrations/0005_fusion_security_events.sql` and redeploy `panel-
 
 ## Moderation case history
 
-Apply `0007_fusion_moderation_cases.sql` and redeploy `panel-admin` before enabling manual moderation commands in the command editor. The bot records the moderator ID, target ID (when applicable), action, reason, duration, metadata, and timestamp. The Activity log displays the latest 100 cases. The table is protected by RLS and has no direct browser access; reads are mediated by the authenticated admin function and inserts require the bot secret.
+Apply `0007_fusion_moderation_cases.sql` and redeploy `panel-admin` before enabling manual moderation commands in the command editor. The moderation commands start disabled after migration and must be explicitly enabled in the panel. The bot records the moderator ID, target ID (when applicable), action, reason, duration, metadata, and timestamp. The Activity log displays the latest 100 cases. The table is protected by RLS and has no direct browser access; reads are mediated by the authenticated admin function and inserts require the bot secret.
