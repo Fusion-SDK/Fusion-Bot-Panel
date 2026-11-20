@@ -269,6 +269,14 @@ Deno.serve(async (request) => {
   }
 
 
+  if (body.action === "get_admin_audit") {
+    const { data, error } = await admin.from("fusion_panel_audit")
+      .select("id, actor_user_id, action, details, created_at")
+      .order("created_at", { ascending: false }).limit(100);
+    if (error) return json({ error: "Could not load panel audit history." }, 500);
+    return json({ audit: data ?? [] });
+  }
+
   if (body.action === "get_security_events") {
     const guildId = body.guildId;
     if (guildId !== undefined && (typeof guildId !== "string" || !/^\d{17,20}$/.test(guildId))) return json({ error: "Invalid server ID." }, 400);
