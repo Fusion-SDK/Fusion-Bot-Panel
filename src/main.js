@@ -116,7 +116,7 @@ function renderCommands() {
     </label>`).join("");
   return `
     <div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / CONFIGURATION</div><h1>Command controls</h1><p>Choose which slash commands the bot should make available.</p></div><button class="button primary" id="save-commands">Save changes</button></div>
-    <div class="notice warning">Saving updates the protected configuration. The bot will not enforce these settings until its configuration polling integration is installed.</div>
+    <div class="notice success">Settings are saved securely. Fusion Discord polls this configuration every 60 seconds, updates slash-command registration when settings change, and rejects disabled commands at runtime.</div>
     <div class="settings-panel"><div class="settings-panel-head"><div><h2>Slash commands</h2><p>Disabled commands should be hidden from the bot's command registration and rejected at execution time.</p></div><span class="settings-count">${commands.filter((item) => item.enabled).length} ENABLED</span></div>
       ${rows || '<p class="empty-copy">No command configuration was returned by the backend.</p>'}
     </div>
