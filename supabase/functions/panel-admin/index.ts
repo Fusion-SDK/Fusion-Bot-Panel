@@ -10,6 +10,11 @@ const corsHeaders = {
 const DEFAULT_CONFIG = {
   commands: {
     ping: true,
+    warn: true,
+    timeout: true,
+    kick: true,
+    ban: true,
+    purge: true,
     "account-verify": false,
     "account-status": false,
     "account-unlink": false
@@ -119,6 +124,38 @@ Deno.serve(async (request) => {
   // The bot uses its existing shared secret; it never receives service-role credentials.
 
   // Bot-originated security events are accepted only with the dedicated bot secret.
+  if (body.action === "bot_log_moderation_case") {
+    const supplied = request.headers.get("x-fusion-bot-secret") ?? "";
+    if (!safeEqual(supplied, botSecret)) return json({ error: "Unauthorized." }, 401);
+    const entry = body.entry as Record<string, unknown> | undefined;
+    const allowedActions = new Set(["warn", "timeout", "kick", "ban", "purge"]);
+    const validId = (value: unknown) => typeof value === "string" && /^\\d{17,20}$/.test(value);
+    if (!entry || !validId(entry.guildId) || !validId(entry.actorUserId) ||
+        (entry.targetUserId !== null && !validId(entry.targetUserId)) ||
+        typeof entry.action !== "string" || !allowedActions.has(entry.action) ||
+        typeof entry.reason !== "string" || !entry.reason.trim() || entry.reason.length > 500 ||
+        (entry.durationSeconds !== null && (!Number.isInteger(entry.durationSeconds) || Number(entry.durationSeconds) < 1 || Number(entry.durationSeconds) > 2_419_200)) ||
+        !entry.metadata || typeof entry.metadata !== "object" || Array.isArray(entry.metadata) ||
+        JSON.stringify(entry.metadata).length > 2_000) {
+      return json({ error: "Invalid moderation case." }, 400);
+    }
+    if ((entry.action === "purge" && entry.targetUserId !== null) ||
+        (entry.action !== "purge" && !validId(entry.targetUserId))) {
+      return json({ error: "Invalid moderation target." }, 400);
+    }
+    const { data, error } = await admin.from("fusion_moderation_cases").insert({
+      guild_id: entry.guildId,
+      actor_user_id: entry.actorUserId,
+      target_user_id: entry.targetUserId,
+      action: entry.action,
+      reason: entry.reason.trim(),
+      duration_seconds: entry.durationSeconds,
+      metadata: entry.metadata
+    }).select("id").single();
+    if (error) return json({ error: "Could not save the moderation case." }, 500);
+    return json({ ok: true, caseId: data.id });
+  }
+
   if (body.action === "bot_log_security_event") {
     const supplied = request.headers.get("x-fusion-bot-secret") ?? "";
     if (!safeEqual(supplied, botSecret)) return json({ error: "Unauthorized." }, 401);
@@ -268,6 +305,14 @@ Deno.serve(async (request) => {
     return json({ error: "You are not authorized to administer this bot." }, 403);
   }
 
+
+  if (body.action === "get_moderation_cases") {
+    const { data, error } = await admin.from("fusion_moderation_cases")
+      .select("id, guild_id, actor_user_id, target_user_id, action, reason, duration_seconds, metadata, created_at")
+      .order("created_at", { ascending: false }).limit(100);
+    if (error) return json({ error: "Could not load moderation case history." }, 500);
+    return json({ cases: data ?? [] });
+  }
 
   if (body.action === "get_admin_audit") {
     const { data, error } = await admin.from("fusion_panel_audit")
