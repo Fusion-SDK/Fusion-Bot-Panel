@@ -13,6 +13,9 @@ let currentSession = null;
 let dashboardData = null;
 let busy = false;
 let activePanelPage = "overview";
+let securityEvents = [];
+let securityEventsLoading = false;
+let securityEventsLoaded = false;
 const configured = Boolean(config.url && config.anonKey);
 
 if (configured) {
@@ -324,10 +327,31 @@ async function loadGuildResources(guildId = activeSecurityGuildId) {
   }
 }
 
+function renderSecurityActivity() {
+  const rows = securityEvents.map((event) => {
+    const guild = guildDirectory.find((item) => item.guild_id === event.guild_id);
+    const label = String(event.event_type ?? "security").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const timestamp = event.created_at ? new Date(event.created_at).toLocaleString() : "Unknown time";
+    return '<article class="security-row"><span class="security-check pending">!</span><div><strong>' + escapeHtml(label) + " · " + escapeHtml(guild?.name ?? event.guild_id) + '</strong><span>' + escapeHtml(event.summary) + " · " + escapeHtml(timestamp) + '</span></div><span class="security-state pending-text">' + escapeHtml(String(event.severity ?? "warning").toUpperCase()) + '</span></article>';
+  }).join("");
+  return '<div class="page-heading"><div><div class="eyebrow">FUSION SECURITY / EVENT HISTORY</div><h1>Activity log</h1><p>Recent security detections reported by Fusion Discord across connected servers.</p></div><button class="button subtle" id="refresh-security-events">↻ Refresh</button></div>' +
+    '<div class="notice warning">These are detection records, not proof of misconduct. The current protection engines remain monitor-only and do not automatically punish members.</div>' +
+    '<div class="settings-panel"><div class="settings-panel-head"><div><h2>Security events</h2><p>Showing up to 100 most recent detections.</p></div></div>' + (securityEventsLoading ? '<p class="empty-copy">Loading security events…</p>' : rows || '<p class="empty-copy">No security events have been recorded yet. Events appear here when a configured monitor detects a pattern.</p>') + '</div>';
+}
+
+async function loadSecurityEvents(force = false) {
+  if (securityEventsLoading || (securityEventsLoaded && !force)) return;
+  securityEventsLoading = true;
+  renderPage("activity");
+  try { const result = await callPanel("get_security_events"); securityEvents = Array.isArray(result.events) ? result.events : []; }
+  catch (error) { const notice = document.querySelector(".notice"); if (notice) notice.textContent = "Could not load security events: " + error.message; }
+  finally { securityEventsLoading = false; securityEventsLoaded = true; renderPage("activity"); }
+}
+
 function renderPlaceholder(page) {
   const pages = {
     permissions: ["Permissions", "Review command access and administrator permissions.", "Permission management will be added after command settings are connected."],
-    activity: ["Activity log", "Review administrative changes and bot events.", "Audit history will be connected in a later step."]
+    activity: ["Activity log", "Review security detections reported by the bot.", "Security event history is loading."]
   };
   const item = pages[page] ?? pages.permissions;
   return `<div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / SETTINGS</div><h1>${item[0]}</h1><p>${item[1]}</p></div></div><div class="empty-state"><div class="empty-icon">◈</div><h2>Next integration step</h2><p>${item[2]}</p><span class="coming-soon">FOUNDATION IN PLACE</span></div>`;
@@ -393,7 +417,7 @@ function navigateToPage(page) {
 
 function renderPage(page = "overview") {
   activePanelPage = page;
-  renderShell(page === "overview" ? renderOverview() : page === "commands" ? renderCommands() : page === "verification" ? renderVerification() : page === "security" ? renderSecurity() : ["servers", "roles", "channels"].includes(page) ? renderResourcePage(page) : renderPlaceholder(page), page);
+  renderShell(page === "overview" ? renderOverview() : page === "commands" ? renderCommands() : page === "verification" ? renderVerification() : page === "security" ? renderSecurity() : page === "activity" ? renderSecurityActivity() : ["servers", "roles", "channels"].includes(page) ? renderResourcePage(page) : renderPlaceholder(page), page);
   document.querySelector("#refresh")?.addEventListener("click", loadDashboard);
   document.querySelector("#save-commands")?.addEventListener("click", saveCommands);
   document.querySelector("#save-verification")?.addEventListener("click", saveVerification);
@@ -402,8 +426,10 @@ function renderPage(page = "overview") {
   document.querySelector("#refresh-resources")?.addEventListener("click", () => loadGuildResources(activeSecurityGuildId));
   document.querySelectorAll("[data-open-server]").forEach((button) => button.addEventListener("click", () => { activeSecurityGuildId = button.dataset.openServer; guildResources = null; renderPage("roles"); }));
   document.querySelector("#refresh-guilds")?.addEventListener("click", () => loadGuildDirectory(true));
+  document.querySelector("#refresh-security-events")?.addEventListener("click", () => loadSecurityEvents(true));
   document.querySelector("#save-security")?.addEventListener("click", saveGuildSecurity);
   document.querySelectorAll("[data-page]").forEach((button) => button.addEventListener("click", () => navigateToPage(button.dataset.page)));
+  if (page === "activity" && currentSession && !securityEventsLoading) void loadSecurityEvents();
   if (["security", "servers", "roles", "channels"].includes(page) && !guildDirectoryLoaded) void loadGuildDirectory();
   if (["roles", "channels", "security"].includes(page) && guildDirectoryLoaded && activeSecurityGuildId && !guildResources && !guildResourcesLoading) void loadGuildResources(activeSecurityGuildId);
 }
