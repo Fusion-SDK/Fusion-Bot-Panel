@@ -14,6 +14,8 @@ let dashboardData = null;
 let busy = false;
 let activePanelPage = "overview";
 let securityEvents = [];
+let adminAuditEvents = [];
+let moderationCases = [];
 let securityEventsLoading = false;
 let securityEventsLoaded = false;
 const configured = Boolean(config.url && config.anonKey);
@@ -59,7 +61,7 @@ function renderShell(content = "", currentPage = "overview") {
         <div class="workspace-label">WORKSPACE</div>
         <nav class="nav-list">
           <a class="nav-link ${currentPage === "overview" ? "active" : ""}" href="#overview"><span class="nav-icon">▦</span> Overview</a>
-          <a class="nav-link ${currentPage === "commands" ? "active" : ""}" href="#commands"><span class="nav-icon">⌘</span> Commands <span class="nav-count">4</span></a>
+          <a class="nav-link ${currentPage === "commands" ? "active" : ""}" href="#commands"><span class="nav-icon">⌘</span> Commands <span class="nav-count">9</span></a>
           <a class="nav-link ${currentPage === "verification" ? "active" : ""}" href="#verification"><span class="nav-icon">◈</span> Verification</a>
           <a class="nav-link ${currentPage === "security" ? "active" : ""}" href="#security"><span class="nav-icon">⬡</span> Server security</a>
           <a class="nav-link ${currentPage === "servers" ? "active" : ""}" href="#servers"><span class="nav-icon">◎</span> Servers</a>
@@ -107,9 +109,20 @@ function renderOverview() {
 
 function renderCommands() {
   const commands = Array.isArray(dashboardData?.commands) ? dashboardData.commands : [];
+  const descriptions = {
+    ping: "Check bot responsiveness.",
+    warn: "Record a moderator-issued warning in the case history.",
+    timeout: "Temporarily restrict a member for up to 28 days.",
+    kick: "Remove a member from this server.",
+    ban: "Ban a member from this server.",
+    purge: "Remove up to 100 recent messages from this channel.",
+    "account-verify": "Locked until authenticated in-game account linking is implemented and tested.",
+    "account-status": "Locked until authenticated in-game account linking is implemented and tested.",
+    "account-unlink": "Locked until authenticated in-game account linking is implemented and tested."
+  };
   const rows = commands.map((command) => `
     <label class="setting-row">
-      <span class="setting-copy"><strong>/${escapeHtml(command.name)}</strong><span>${command.name === "ping" ? "Basic bot responsiveness check." : command.name.startsWith("account-") ? "Locked until the authenticated in-game account-linking flow is released and tested." : "Basic bot command."}</span></span>
+      <span class="setting-copy"><strong>/${escapeHtml(command.name)}</strong><span>${escapeHtml(descriptions[command.name] ?? "No description available.")}</span></span>
       <input class="setting-toggle" type="checkbox" data-command="${escapeHtml(command.name)}" ${command.enabled && !command.name.startsWith("account-") ? "checked" : ""} ${command.name.startsWith("account-") ? "disabled" : ""} />
       <span class="toggle-ui" aria-hidden="true"></span>
     </label>`).join("");
@@ -347,8 +360,17 @@ function renderSecurityActivity() {
     const timestamp = event.created_at ? new Date(event.created_at).toLocaleString() : "Unknown time";
     return '<article class="security-row"><span class="security-check">✓</span><div><strong>' + escapeHtml(action) + '</strong><span>' + escapeHtml(summary || "Administrative setting updated.") + " · " + escapeHtml(timestamp) + '</span></div><span class="security-state">ADMIN</span></article>';
   }).join("");
-  return '<div class="page-heading"><div><div class="eyebrow">FUSION / AUDIT HISTORY</div><h1>Activity log</h1><p>Review security detections and changes made through the private control panel.</p></div><button class="button subtle" id="refresh-security-events">↻ Refresh</button></div>' +
-    '<div class="notice warning">Security detections are signals for review, not proof of misconduct. Current protection engines remain monitor-only.</div>' +
+  const caseRows = moderationCases.map((entry) => {
+    const guild = guildDirectory.find((item) => item.guild_id === entry.guild_id);
+    const action = String(entry.action ?? "moderation").toUpperCase();
+    const target = entry.target_user_id ? "Target: " + entry.target_user_id : "Channel: " + (entry.metadata?.channelId ?? "not recorded");
+    const duration = entry.duration_seconds ? " · " + entry.duration_seconds + "s" : "";
+    const timestamp = entry.created_at ? new Date(entry.created_at).toLocaleString() : "Unknown time";
+    return '<article class="security-row"><span class="security-check">✓</span><div><strong>Case #' + escapeHtml(entry.id) + " · " + escapeHtml(action) + " · " + escapeHtml(guild?.name ?? entry.guild_id) + '</strong><span>' + escapeHtml(entry.reason) + " · " + escapeHtml(target) + duration + " · Moderator: " + escapeHtml(entry.actor_user_id) + " · " + escapeHtml(timestamp) + '</span></div><span class="security-state">CASE</span></article>';
+  }).join("");
+  return '<div class="page-heading"><div><div class="eyebrow">FUSION / AUDIT HISTORY</div><h1>Activity log</h1><p>Review security detections, moderator actions, and changes made through the private control panel.</p></div><button class="button subtle" id="refresh-security-events">↻ Refresh</button></div>' +
+    '<div class="notice warning">Security detections are signals for review, not proof of misconduct. Automatic punishments and emergency lockdown remain disabled.</div>' +
+    '<div class="settings-panel"><div class="settings-panel-head"><div><h2>Moderation cases</h2><p>Recent moderator-initiated actions, with reasons and actor IDs.</p></div></div>' + (securityEventsLoading ? '<p class="empty-copy">Loading moderation history…</p>' : caseRows || '<p class="empty-copy">No moderation cases recorded yet.</p>') + '</div>' +
     '<div class="settings-panel"><div class="settings-panel-head"><div><h2>Security detections</h2><p>Up to 100 recent bot-reported events.</p></div></div>' + (securityEventsLoading ? '<p class="empty-copy">Loading activity…</p>' : securityRows || '<p class="empty-copy">No security detections recorded yet.</p>') + '</div>' +
     '<div class="settings-panel"><div class="settings-panel-head"><div><h2>Panel administration</h2><p>Up to 100 recent configuration changes.</p></div></div>' + (securityEventsLoading ? '<p class="empty-copy">Loading audit history…</p>' : auditRows || '<p class="empty-copy">No panel changes recorded yet.</p>') + '</div>';
 }
@@ -358,12 +380,14 @@ async function loadSecurityEvents(force = false) {
   securityEventsLoading = true;
   renderPage("activity");
   try {
-    const [securityResult, auditResult] = await Promise.all([
+    const [securityResult, auditResult, caseResult] = await Promise.all([
       callPanel("get_security_events"),
-      callPanel("get_admin_audit")
+      callPanel("get_admin_audit"),
+      callPanel("get_moderation_cases")
     ]);
     securityEvents = Array.isArray(securityResult.events) ? securityResult.events : [];
     adminAuditEvents = Array.isArray(auditResult.audit) ? auditResult.audit : [];
+    moderationCases = Array.isArray(caseResult.cases) ? caseResult.cases : [];
   } catch (error) {
     const notice = document.querySelector(".notice");
     if (notice) notice.textContent = "Could not load activity history: " + error.message;
