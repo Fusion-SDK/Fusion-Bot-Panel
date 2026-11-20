@@ -10,11 +10,11 @@ const corsHeaders = {
 const DEFAULT_CONFIG = {
   commands: {
     ping: true,
-    warn: true,
-    timeout: true,
-    kick: true,
-    ban: true,
-    purge: true,
+    warn: false,
+    timeout: false,
+    kick: false,
+    ban: false,
+    purge: false,
     "account-verify": false,
     "account-status": false,
     "account-unlink": false
@@ -305,14 +305,6 @@ Deno.serve(async (request) => {
     return json({ error: "You are not authorized to administer this bot." }, 403);
   }
 
-
-  if (body.action === "get_moderation_cases") {
-    const { data, error } = await admin.from("fusion_moderation_cases")
-      .select("id, guild_id, actor_user_id, target_user_id, action, reason, duration_seconds, metadata, created_at")
-      .order("created_at", { ascending: false }).limit(100);
-    if (error) return json({ error: "Could not load moderation case history." }, 500);
-    return json({ cases: data ?? [] });
-  }
 
   if (body.action === "get_moderation_cases") {
     const { data, error } = await admin.from("fusion_moderation_cases")
