@@ -34,9 +34,9 @@ where id = 1;
 -- Persistent, private case history for moderator-initiated actions.
 create table if not exists public.fusion_moderation_cases (
   id bigint generated always as identity primary key,
-  guild_id text not null check (guild_id ~ '^\\d{17,20}$'),
-  actor_user_id text not null check (actor_user_id ~ '^\\d{17,20}$'),
-  target_user_id text check (target_user_id is null or target_user_id ~ '^\\d{17,20}$'),
+  guild_id text not null check (guild_id ~ '^[0-9]{17,20}$'),
+  actor_user_id text not null check (actor_user_id ~ '^[0-9]{17,20}$'),
+  target_user_id text check (target_user_id is null or target_user_id ~ '^[0-9]{17,20}$'),
   action text not null check (action in ('warn', 'timeout', 'kick', 'ban', 'purge')),
   reason text not null check (char_length(reason) between 1 and 500),
   duration_seconds integer check (duration_seconds is null or duration_seconds between 1 and 2419200),
