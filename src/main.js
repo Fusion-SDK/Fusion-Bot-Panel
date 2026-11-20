@@ -109,7 +109,7 @@ function renderCommands() {
   const commands = Array.isArray(dashboardData?.commands) ? dashboardData.commands : [];
   const rows = commands.map((command) => `
     <label class="setting-row">
-      <span class="setting-copy"><strong>/${escapeHtml(command.name)}</strong><span>${command.name === "ping" ? "Basic bot responsiveness check." : command.name === "account-verify" ? "Start the Fusion account-linking process. Keep disabled until the in-game linking flow is ready." : command.name === "account-status" ? "Check the linked Fusion account status." : "Remove the current Fusion account link."}</span></span>
+      <span class="setting-copy"><strong>/${escapeHtml(command.name)}</strong><span>${command.name === "ping" ? "Basic bot responsiveness check." : command.name.startsWith("account-") ? "Locked until the authenticated in-game account-linking flow is released and tested." : "Basic bot command."}</span></span>
       <input class="setting-toggle" type="checkbox" data-command="${escapeHtml(command.name)}" ${command.enabled && !command.name.startsWith("account-") ? "checked" : ""} ${command.name.startsWith("account-") ? "disabled" : ""} />
       <span class="toggle-ui" aria-hidden="true"></span>
     </label>`).join("");
