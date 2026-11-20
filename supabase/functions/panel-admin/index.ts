@@ -117,6 +117,24 @@ Deno.serve(async (request) => {
 
   // The bot uses its existing shared secret; it never receives service-role credentials.
 
+  // Bot-originated security events are accepted only with the dedicated bot secret.
+  if (body.action === "bot_log_security_event") {
+    const supplied = request.headers.get("x-fusion-bot-secret") ?? "";
+    if (!safeEqual(supplied, botSecret)) return json({ error: "Unauthorized." }, 401);
+    const event = body.event as Record<string, unknown> | undefined;
+    const allowedTypes = new Set(["anti_raid", "anti_nuke", "auto_mod", "join_gate", "lockdown"]);
+    if (!event || typeof event.guildId !== "string" || !/^\d{17,20}$/.test(event.guildId) ||
+        typeof event.eventType !== "string" || !allowedTypes.has(event.eventType) ||
+        typeof event.summary !== "string" || event.summary.trim().length < 1 || event.summary.length > 240 ||
+        event.severity !== "warning") return json({ error: "Invalid security event." }, 400);
+    const { error } = await admin.from("fusion_security_events").insert({
+      guild_id: event.guildId, event_type: event.eventType, summary: event.summary.trim(), severity: "warning"
+    });
+    if (error) return json({ error: "Could not record the security event." }, 500);
+    return json({ ok: true });
+  }
+
+
   if (body.action === "bot_sync_guilds") {
     const supplied = request.headers.get("x-fusion-bot-secret") ?? "";
     if (!safeEqual(supplied, botSecret)) return json({ error: "Unauthorized." }, 401);
@@ -249,6 +267,16 @@ Deno.serve(async (request) => {
     return json({ error: "You are not authorized to administer this bot." }, 403);
   }
 
+
+  if (body.action === "get_security_events") {
+    const guildId = body.guildId;
+    if (guildId !== undefined && (typeof guildId !== "string" || !/^\d{17,20}$/.test(guildId))) return json({ error: "Invalid server ID." }, 400);
+    let query = admin.from("fusion_security_events").select("id, guild_id, event_type, summary, severity, created_at").order("created_at", { ascending: false }).limit(100);
+    if (typeof guildId === "string") query = query.eq("guild_id", guildId);
+    const { data, error } = await query;
+    if (error) return json({ error: "Could not load security events." }, 500);
+    return json({ events: data ?? [] });
+  }
 
   if (body.action === "get_guild_resources") {
     const guildId = body.guildId;
