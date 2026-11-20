@@ -50,8 +50,8 @@ function validateConfig(input: unknown) {
   return {
     commands,
     verification: {
-      enabled: verificationInput.enabled,
-      verifiedRoleId: role as string | null
+      enabled: false,
+      verifiedRoleId: null
     }
   };
 }
