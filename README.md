@@ -48,11 +48,11 @@ npm run dev
 
 The first backend foundation is included in this repository:
 
-- Migration: `supabase/migrations/0001_fusion_panel_config.sql`\n- Per-server security migration: `supabase/migrations/0002_fusion_guild_security.sql`
+- Migrations: `supabase/migrations/0001` through `0007` (apply in numeric order).
 - Edge Function: `supabase/functions/panel-admin/index.ts`
 - Function config: `supabase/config.toml`
 
-Apply the SQL migrations in order in the Supabase SQL Editor, then deploy the `panel-admin` Edge Function. The server directory requires `0003_fusion_bot_guild_directory.sql`; role and channel snapshots additionally require `0004_fusion_bot_guild_resources.sql`.
+Apply all SQL migrations in order through `0007_fusion_moderation_cases.sql`, then deploy the current `panel-admin` Edge Function. Migration `0006` hard-locks account linking in stored configuration. Migration `0007` adds the moderator case table and command settings. The server directory requires `0003`; role and channel snapshots require `0004`; security history requires `0005`.
 
 Configure these Edge Function secrets in Supabase:
 
@@ -65,13 +65,7 @@ Supabase supplies `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROL
 
 Create your own Supabase Auth account before setting the admin UUID. Do not enable public sign-up just for the panel; create the owner account through the Supabase dashboard/invite flow. Only the exact configured UUID is authorized by the Edge Function.
 
-The function currently supports:
-
-- `get_dashboard`: authenticated administrator reads the current settings.
-- `update_config`: authenticated administrator saves validated command and verification settings.
-- `bot_get_config`: the bot reads settings using `x-fusion-bot-secret`.
-
-The frontend currently provides the login and overview foundation. The command editor and bot-side polling integration are subsequent steps; do not treat the dashboard as fully operational until those are implemented and tested.
+The protected function supports authenticated dashboard/configuration reads and writes, server directory/resource reads, per-server security settings, security and administration audit history, and moderation case history. Bot-only synchronization and case/event writes require `x-fusion-bot-secret`; browser requests require the authenticated allowlisted administrator session. The bot polls command configuration and enforces disabled commands at runtime.
 
 ## Deployment privacy
 
@@ -80,15 +74,17 @@ Do not deploy this dashboard to a public URL until the access gateway and backen
 ## Current limitations
 
 - The panel API does not expose Discord bot tokens or Supabase service credentials.
-- Bot status and server count are placeholders until a trusted bot heartbeat is implemented.
-- Command settings are stored securely, but the bot does not yet fetch and enforce them.
-- Account verification remains disabled until the authenticated in-game linking flow is implemented and deployed.
+- The dashboard reports bot freshness from the latest server-directory sync; a bot with no connected servers has no directory heartbeat.
+- The current administrator allowlist supports one configured Supabase Auth user; additional staff accounts and per-server staff roles are not implemented.
+- Discord roles and channels are read-only snapshots in the panel.
+- Security monitors remain alert-only. Automatic punishments and emergency lockdown are not enabled.
+- Account verification and all three account-linking commands remain hard-disabled until authenticated in-game linking is implemented and tested.
 
 ## Fusion Security dashboard
 
 The Server security page stores separate settings for each Discord server ID. Apply `0002_fusion_guild_security.sql` and `0005_fusion_security_events.sql` before using all security features. The owner-only `panel-admin` function validates all numeric ranges and channel IDs; browser clients have no direct table access.
 
-The controls cover anti-raid, anti-nuke, AutoMod, Join Gate, and a reserved emergency-lockdown setting. The Activity log page shows recent monitor detections reported by the bot. The bot-side security engines in the companion FusionDiscord repository are currently monitor-only. The panel controls are configuration storage and do not by themselves activate enforcement. Configure alert channel IDs only after the bot's log-channel delivery integration is deployed.
+The controls cover anti-raid, anti-nuke, AutoMod, Join Gate, and a reserved emergency-lockdown setting. The Activity log page combines recent security detections, panel configuration changes, and moderator case history. The bot-side security engines in the companion FusionDiscord repository are currently monitor-only. Manual `/warn`, `/timeout`, `/kick`, `/ban`, and `/purge` actions require the corresponding Discord permission and are written to the case table through the bot-secret endpoint. The panel controls do not enable automatic punishments.
 
 Do not enable destructive automatic responses based solely on event-rate heuristics. Anti-nuke and AutoMod detections can have false positives; moderation actions and lockdown must remain permission-checked, auditable, and recoverable.
 
@@ -110,3 +106,8 @@ Resource snapshots are read-only. This avoids giving a browser the ability to ch
 ## Security event history
 
 Apply `supabase/migrations/0005_fusion_security_events.sql` and redeploy `panel-admin`. The bot reports monitor detections through the bot-secret-only `bot_log_security_event` action. Authenticated panel administrators can read the latest 100 events through `get_security_events`. Events store only the server ID, detection category, short summary, severity, and timestamp; message contents and member identifiers are not persisted. The Activity log is a detection history, not an enforcement or punishment system.
+
+
+## Moderation case history
+
+Apply `0007_fusion_moderation_cases.sql` and redeploy `panel-admin` before enabling manual moderation commands in the command editor. The bot records the moderator ID, target ID (when applicable), action, reason, duration, metadata, and timestamp. The Activity log displays the latest 100 cases. The table is protected by RLS and has no direct browser access; reads are mediated by the authenticated admin function and inserts require the bot secret.
