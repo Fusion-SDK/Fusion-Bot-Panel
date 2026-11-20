@@ -11,8 +11,8 @@ const DEFAULT_CONFIG = {
   commands: {
     ping: true,
     "account-verify": false,
-    "account-status": true,
-    "account-unlink": true
+    "account-status": false,
+    "account-unlink": false
   },
   verification: { enabled: false, verifiedRoleId: null as string | null }
 };
@@ -38,7 +38,8 @@ function validateConfig(input: unknown) {
   for (const name of Object.keys(DEFAULT_CONFIG.commands)) {
     const enabled = commandInput?.[name];
     if (typeof enabled !== "boolean") throw new Error(`Command setting '${name}' must be true or false.`);
-    commands[name] = enabled;
+    // Account linking remains locked until the authenticated in-game flow is released.
+    commands[name] = name.startsWith("account-") ? false : enabled;
   }
   if (!verificationInput || typeof verificationInput.enabled !== "boolean") {
     throw new Error("Verification enabled must be true or false.");
@@ -50,8 +51,8 @@ function validateConfig(input: unknown) {
   return {
     commands,
     verification: {
-      enabled: verificationInput.enabled,
-      verifiedRoleId: role as string | null
+      enabled: false,
+      verifiedRoleId: null
     }
   };
 }
@@ -268,6 +269,14 @@ Deno.serve(async (request) => {
   }
 
 
+  if (body.action === "get_admin_audit") {
+    const { data, error } = await admin.from("fusion_panel_audit")
+      .select("id, actor_user_id, action, details, created_at")
+      .order("created_at", { ascending: false }).limit(100);
+    if (error) return json({ error: "Could not load panel audit history." }, 500);
+    return json({ audit: data ?? [] });
+  }
+
   if (body.action === "get_security_events") {
     const guildId = body.guildId;
     if (guildId !== undefined && (typeof guildId !== "string" || !/^\d{17,20}$/.test(guildId))) return json({ error: "Invalid server ID." }, 400);
@@ -299,12 +308,21 @@ Deno.serve(async (request) => {
     const { data, error } = await admin.from("fusion_panel_config")
       .select("config, updated_at").eq("id", 1).single();
     if (error) return json({ error: "Could not load dashboard configuration." }, 500);
+    const [{ count: guildCount, error: guildCountError }, { data: latestSync, error: syncError }] = await Promise.all([
+      admin.from("fusion_bot_guilds").select("guild_id", { count: "exact", head: true }),
+      admin.from("fusion_bot_guilds").select("updated_at").order("updated_at", { ascending: false }).limit(1)
+    ]);
+    const missingDirectory = guildCountError?.code === "42P01" || syncError?.code === "42P01";
+    if ((guildCountError || syncError) && !missingDirectory) return json({ error: "Could not load bot status." }, 500);
+    const lastSeenAt = latestSync?.[0]?.updated_at ?? null;
+    const syncAge = lastSeenAt ? Date.now() - Date.parse(lastSeenAt) : Number.POSITIVE_INFINITY;
+    const status = syncAge <= 150_000 ? "Online" : (guildCount ?? 0) > 0 ? "Last seen" : "Waiting for bot";
     const commands = Object.entries((data.config as typeof DEFAULT_CONFIG).commands)
-      .map(([name, enabled]) => ({ name, enabled }));
+      .map(([name, enabled]) => ({ name, enabled: name.startsWith("account-") ? false : enabled }));
     return json({
-      bot: { status: "Configuration connected", guildCount: null },
+      bot: { status, guildCount: missingDirectory ? 0 : guildCount ?? 0, lastSeenAt },
       commands,
-      verification: (data.config as typeof DEFAULT_CONFIG).verification,
+      verification: { enabled: false, verifiedRoleId: null },
       updatedAt: data.updated_at
     });
   }

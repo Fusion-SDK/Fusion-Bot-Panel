@@ -59,8 +59,8 @@ function renderShell(content = "", currentPage = "overview") {
         <div class="workspace-label">WORKSPACE</div>
         <nav class="nav-list">
           <a class="nav-link ${currentPage === "overview" ? "active" : ""}" href="#overview"><span class="nav-icon">▦</span> Overview</a>
-          <a class="nav-link" href="#commands"><span class="nav-icon">⌘</span> Commands <span class="nav-count">4</span></a>
-          <a class="nav-link" href="#verification"><span class="nav-icon">◈</span> Verification</a>
+          <a class="nav-link ${currentPage === "commands" ? "active" : ""}" href="#commands"><span class="nav-icon">⌘</span> Commands <span class="nav-count">4</span></a>
+          <a class="nav-link ${currentPage === "verification" ? "active" : ""}" href="#verification"><span class="nav-icon">◈</span> Verification</a>
           <a class="nav-link ${currentPage === "security" ? "active" : ""}" href="#security"><span class="nav-icon">⬡</span> Server security</a>
           <a class="nav-link ${currentPage === "servers" ? "active" : ""}" href="#servers"><span class="nav-icon">◎</span> Servers</a>
           <a class="nav-link ${currentPage === "roles" ? "active" : ""}" href="#roles"><span class="nav-icon">♙</span> Roles</a>
@@ -75,29 +75,28 @@ function renderShell(content = "", currentPage = "overview") {
   document.querySelector("#sign-out")?.addEventListener("click", signOut);
   document.querySelectorAll(".nav-link").forEach((link) => link.addEventListener("click", (event) => {
     event.preventDefault();
-    const page = link.getAttribute("href").slice(1);
-    document.querySelectorAll(".nav-link").forEach((item) => item.classList.toggle("active", item === link));
-    renderPage(page);
+    navigateToPage(link.getAttribute("href").slice(1));
   }));
 }
 
 function renderOverview() {
   const botStatus = dashboardData?.bot?.status ?? "Not connected";
   const guildCount = dashboardData?.bot?.guildCount ?? "—";
+  const lastSync = dashboardData?.bot?.lastSeenAt ? new Date(dashboardData.bot.lastSeenAt).toLocaleString() : "No bot sync received yet";
   const commands = Array.isArray(dashboardData?.commands) ? dashboardData.commands : [];
   const enabled = commands.filter((item) => item.enabled).length;
   return `
     <div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / CONTROL CENTER</div><h1>Overview</h1><p>Your bot's configuration and operational status at a glance.</p></div><button class="button subtle" id="refresh">↻ <span>Refresh</span></button></div>
     <div class="notice ${dashboardData ? "success" : "warning"}">${dashboardData ? "Connected to the Fusion administration service." : "Dashboard interface is ready. The secure panel-admin backend function still needs to be deployed and configured."}</div>
     <div class="stats-grid">
-      <article class="stat-card"><div class="stat-top"><span>BOT STATUS</span><span class="stat-icon">◉</span></div><div class="stat-value">${escapeHtml(botStatus)}</div><div class="stat-note"><span class="muted-dot"></span> Reported by backend</div></article>
+      <article class="stat-card"><div class="stat-top"><span>BOT STATUS</span><span class="stat-icon">◉</span></div><div class="stat-value">${escapeHtml(botStatus)}</div><div class="stat-note"><span class="muted-dot"></span> ${escapeHtml(lastSync)}</div></article>
       <article class="stat-card"><div class="stat-top"><span>COMMANDS ENABLED</span><span class="stat-icon">⌘</span></div><div class="stat-value">${dashboardData ? enabled + " / " + commands.length : "—"}</div><div class="stat-note">Managed configuration</div></article>
       <article class="stat-card"><div class="stat-top"><span>DISCORD SERVERS</span><span class="stat-icon">◎</span></div><div class="stat-value">${escapeHtml(guildCount)}</div><div class="stat-note">Live bot metric, when available</div></article>
     </div>
     <div class="section-heading"><div><h2>Quick management</h2><p>Common bot configuration areas.</p></div></div>
     <div class="quick-grid">
       <button class="quick-card" data-page="commands"><span class="quick-icon violet">⌘</span><strong>Command controls</strong><span>Enable or disable slash commands.</span><b>Open controls →</b></button>
-      <button class="quick-card" data-page="verification"><span class="quick-icon blue">◈</span><strong>Account verification</strong><span>Manage Fusion account-linking settings.</span><b>Configure →</b></button>
+      <button class="quick-card" data-page="verification"><span class="quick-icon blue">◈</span><strong>Account linking</strong><span>View the current release gate and readiness status.</span><b>Configure →</b></button>
       <button class="quick-card" data-page="permissions"><span class="quick-icon amber">♙</span><strong>Permissions</strong><span>Review who can use bot commands.</span><b>Manage access →</b></button>
     </div>
     <div class="section-heading lower"><div><h2>Security status</h2><p>Protection built into the control panel.</p></div></div>
@@ -110,8 +109,8 @@ function renderCommands() {
   const commands = Array.isArray(dashboardData?.commands) ? dashboardData.commands : [];
   const rows = commands.map((command) => `
     <label class="setting-row">
-      <span class="setting-copy"><strong>/${escapeHtml(command.name)}</strong><span>${command.name === "ping" ? "Basic bot responsiveness check." : command.name === "account-verify" ? "Start the Fusion account-linking process. Keep disabled until the in-game linking flow is ready." : command.name === "account-status" ? "Check the linked Fusion account status." : "Remove the current Fusion account link."}</span></span>
-      <input class="setting-toggle" type="checkbox" data-command="${escapeHtml(command.name)}" ${command.enabled ? "checked" : ""} />
+      <span class="setting-copy"><strong>/${escapeHtml(command.name)}</strong><span>${command.name === "ping" ? "Basic bot responsiveness check." : command.name.startsWith("account-") ? "Locked until the authenticated in-game account-linking flow is released and tested." : "Basic bot command."}</span></span>
+      <input class="setting-toggle" type="checkbox" data-command="${escapeHtml(command.name)}" ${command.enabled && !command.name.startsWith("account-") ? "checked" : ""} ${command.name.startsWith("account-") ? "disabled" : ""} />
       <span class="toggle-ui" aria-hidden="true"></span>
     </label>`).join("");
   return `
@@ -124,18 +123,16 @@ function renderCommands() {
 }
 
 function renderVerification() {
-  const verification = dashboardData?.verification ?? { enabled: false, verifiedRoleId: null };
   return `
-    <div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / CONFIGURATION</div><h1>Verification settings</h1><p>Manage the Discord role used after a Fusion account is securely linked.</p></div><button class="button primary" id="save-verification">Save changes</button></div>
-    <div class="notice warning">Account verification is currently gated off in the bot. Keep this disabled until the authenticated in-game linking flow is implemented and tested.</div>
+    <div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / RELEASE GATE</div><h1>Account linking</h1><p>Discord account linking is not available in this release.</p></div></div>
+    <div class="notice warning">Locked by the Fusion release gate. Keep account verification disabled until the authenticated in-game linking flow is implemented and tested.</div>
     <div class="settings-panel">
-      <div class="settings-panel-head"><div><h2>Account verification</h2><p>These settings are stored securely, but enabling them here does not bypass the bot's release gate.</p></div></div>
-      <label class="setting-row"><span class="setting-copy"><strong>Enable verification</strong><span>Allow the verification feature when the bot implementation is ready.</span></span><input class="setting-toggle" id="verification-enabled" type="checkbox" ${verification.enabled ? "checked" : ""} /><span class="toggle-ui" aria-hidden="true"></span></label>
-      <div class="field-setting"><label for="verified-role-id">Verified Discord role ID</label><input id="verified-role-id" inputmode="numeric" autocomplete="off" placeholder="e.g. 123456789012345678" value="${escapeHtml(verification.verifiedRoleId ?? "")}" /><p>Enter a Discord role ID, or leave blank if no role is configured.</p></div>
-    </div>
-    <p class="save-feedback" id="verification-feedback" role="status"></p>`;
+      <div class="settings-panel-head"><div><h2>Verification is disabled</h2><p>The panel cannot enable linking, issue challenges, change verified roles, or alter account-link status.</p></div><span class="settings-count">LOCKED</span></div>
+      <div class="security-row"><span class="security-check pending">!</span><div><strong>Authenticated in-game linking</strong><span>Not yet released or validated end-to-end.</span></div><span class="security-state pending-text">NOT READY</span></div>
+      <div class="security-row"><span class="security-check pending">!</span><div><strong>Discord verification commands</strong><span>/account-verify, /account-status, and /account-unlink are disabled.</span></div><span class="security-state pending-text">DISABLED</span></div>
+      <div class="security-row"><span class="security-check pending">!</span><div><strong>Verified role synchronization</strong><span>No account-link verification role changes are performed.</span></div><span class="security-state pending-text">DISABLED</span></div>
+    </div>`;
 }
-
 
 let activeGuildSecurity = null;
 let activeSecurityGuildId = "";
@@ -144,6 +141,7 @@ let guildDirectoryLoading = false;
 let guildDirectoryLoaded = false;
 let guildResources = null;
 let guildResourcesLoading = false;
+let guildResourcesRequest = 0;
 
 function defaultGuildSecurity() {
   return {
@@ -221,7 +219,7 @@ async function loadGuildDirectory(force = false) {
     }
     renderPage(activePanelPage);
     if (activeSecurityGuildId && activePanelPage === "security" && !activeGuildSecurity) await loadGuildSecurity(activeSecurityGuildId);
-    if (activeSecurityGuildId && ["roles", "channels"].includes(activePanelPage)) await loadGuildResources(activeSecurityGuildId);
+
   } catch (error) {
     if (feedback) feedback.textContent = "Could not load the bot's server list: " + error.message;
     const notice = document.querySelector(".notice");
@@ -231,18 +229,21 @@ async function loadGuildDirectory(force = false) {
   }
 }
 
+let guildSecurityRequest = 0;
 async function loadGuildSecurity(guildId = document.querySelector("#security-guild-select")?.value) {
   if (!guildId || !guildDirectory.some((guild) => guild.guild_id === guildId)) return;
   if (activeSecurityGuildId !== guildId) guildResources = null;
+  const requestId = ++guildSecurityRequest;
   activeSecurityGuildId = guildId;
   activeGuildSecurity = null;
   renderPage("security");
   try {
     const result = await callPanel("get_guild_security", { guildId });
+    if (requestId !== guildSecurityRequest || activeSecurityGuildId !== guildId) return;
     activeGuildSecurity = result.config;
     renderPage("security");
-    if (!guildResources || activeSecurityGuildId !== guildId) await loadGuildResources(guildId);
   } catch (error) {
+    if (requestId !== guildSecurityRequest) return;
     const notice = document.querySelector(".notice");
     if (notice) notice.textContent = "Could not load server settings: " + error.message;
   }
@@ -307,61 +308,98 @@ function renderResourcePage(page) {
 
 async function loadGuildResources(guildId = activeSecurityGuildId) {
   if (!guildId || !guildDirectory.some((guild) => guild.guild_id === guildId)) return;
+  const requestId = ++guildResourcesRequest;
   activeSecurityGuildId = guildId;
   guildResourcesLoading = true;
   guildResources = null;
   renderPage(activePanelPage);
   try {
     const result = await callPanel("get_guild_resources", { guildId });
+    if (requestId !== guildResourcesRequest || activeSecurityGuildId !== guildId) return;
     guildResources = {
       roles: Array.isArray(result.roles) ? result.roles : [],
       channels: Array.isArray(result.channels) ? result.channels : [],
       updatedAt: result.updatedAt
     };
   } catch (error) {
+    if (requestId !== guildResourcesRequest) return;
     const notice = document.querySelector(".notice");
     if (notice) notice.textContent = "Could not load server resources: " + error.message;
   } finally {
-    guildResourcesLoading = false;
-    renderPage(activePanelPage);
+    if (requestId === guildResourcesRequest) {
+      guildResourcesLoading = false;
+      renderPage(activePanelPage);
+    }
   }
 }
 
 function renderSecurityActivity() {
-  const rows = securityEvents.map((event) => {
+  const securityRows = securityEvents.map((event) => {
     const guild = guildDirectory.find((item) => item.guild_id === event.guild_id);
-    const label = String(event.event_type ?? "security").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+    const label = String(event.event_type ?? "security").replaceAll("_", " ");
     const timestamp = event.created_at ? new Date(event.created_at).toLocaleString() : "Unknown time";
     return '<article class="security-row"><span class="security-check pending">!</span><div><strong>' + escapeHtml(label) + " · " + escapeHtml(guild?.name ?? event.guild_id) + '</strong><span>' + escapeHtml(event.summary) + " · " + escapeHtml(timestamp) + '</span></div><span class="security-state pending-text">' + escapeHtml(String(event.severity ?? "warning").toUpperCase()) + '</span></article>';
   }).join("");
-  return '<div class="page-heading"><div><div class="eyebrow">FUSION SECURITY / EVENT HISTORY</div><h1>Activity log</h1><p>Recent security detections reported by Fusion Discord across connected servers.</p></div><button class="button subtle" id="refresh-security-events">↻ Refresh</button></div>' +
-    '<div class="notice warning">These are detection records, not proof of misconduct. The current protection engines remain monitor-only and do not automatically punish members.</div>' +
-    '<div class="settings-panel"><div class="settings-panel-head"><div><h2>Security events</h2><p>Showing up to 100 most recent detections.</p></div></div>' + (securityEventsLoading ? '<p class="empty-copy">Loading security events…</p>' : rows || '<p class="empty-copy">No security events have been recorded yet. Events appear here when a configured monitor detects a pattern.</p>') + '</div>';
+  const auditRows = adminAuditEvents.map((event) => {
+    const action = String(event.action ?? "admin_action").replaceAll("_", " ");
+    const details = event.details && typeof event.details === "object" ? JSON.stringify(event.details) : "";
+    const summary = details.length > 220 ? details.slice(0, 217) + "…" : details;
+    const timestamp = event.created_at ? new Date(event.created_at).toLocaleString() : "Unknown time";
+    return '<article class="security-row"><span class="security-check">✓</span><div><strong>' + escapeHtml(action) + '</strong><span>' + escapeHtml(summary || "Administrative setting updated.") + " · " + escapeHtml(timestamp) + '</span></div><span class="security-state">ADMIN</span></article>';
+  }).join("");
+  return '<div class="page-heading"><div><div class="eyebrow">FUSION / AUDIT HISTORY</div><h1>Activity log</h1><p>Review security detections and changes made through the private control panel.</p></div><button class="button subtle" id="refresh-security-events">↻ Refresh</button></div>' +
+    '<div class="notice warning">Security detections are signals for review, not proof of misconduct. Current protection engines remain monitor-only.</div>' +
+    '<div class="settings-panel"><div class="settings-panel-head"><div><h2>Security detections</h2><p>Up to 100 recent bot-reported events.</p></div></div>' + (securityEventsLoading ? '<p class="empty-copy">Loading activity…</p>' : securityRows || '<p class="empty-copy">No security detections recorded yet.</p>') + '</div>' +
+    '<div class="settings-panel"><div class="settings-panel-head"><div><h2>Panel administration</h2><p>Up to 100 recent configuration changes.</p></div></div>' + (securityEventsLoading ? '<p class="empty-copy">Loading audit history…</p>' : auditRows || '<p class="empty-copy">No panel changes recorded yet.</p>') + '</div>';
 }
 
 async function loadSecurityEvents(force = false) {
   if (securityEventsLoading || (securityEventsLoaded && !force)) return;
   securityEventsLoading = true;
   renderPage("activity");
-  try { const result = await callPanel("get_security_events"); securityEvents = Array.isArray(result.events) ? result.events : []; }
-  catch (error) { const notice = document.querySelector(".notice"); if (notice) notice.textContent = "Could not load security events: " + error.message; }
-  finally { securityEventsLoading = false; securityEventsLoaded = true; renderPage("activity"); }
+  try {
+    const [securityResult, auditResult] = await Promise.all([
+      callPanel("get_security_events"),
+      callPanel("get_admin_audit")
+    ]);
+    securityEvents = Array.isArray(securityResult.events) ? securityResult.events : [];
+    adminAuditEvents = Array.isArray(auditResult.audit) ? auditResult.audit : [];
+  } catch (error) {
+    const notice = document.querySelector(".notice");
+    if (notice) notice.textContent = "Could not load activity history: " + error.message;
+  } finally {
+    securityEventsLoading = false;
+    securityEventsLoaded = true;
+    renderPage("activity");
+  }
 }
 
 function renderPlaceholder(page) {
-  const pages = {
-    permissions: ["Permissions", "Review command access and administrator permissions.", "Permission management will be added after command settings are connected."],
-    activity: ["Activity log", "Review security detections reported by the bot.", "Security event history is loading."]
-  };
-  const item = pages[page] ?? pages.permissions;
-  return `<div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / SETTINGS</div><h1>${item[0]}</h1><p>${item[1]}</p></div></div><div class="empty-state"><div class="empty-icon">◈</div><h2>Next integration step</h2><p>${item[2]}</p><span class="coming-soon">FOUNDATION IN PLACE</span></div>`;
+  if (page === "permissions") {
+    const email = currentSession?.user?.email ?? "Current administrator";
+    return `
+      <div class="page-heading"><div><div class="eyebrow">FUSION / ACCESS CONTROL</div><h1>Permissions</h1><p>Review who can administer this private Fusion panel.</p></div></div>
+      <div class="notice success">Every protected request is checked by the panel-admin Edge Function. Signing in alone does not grant access.</div>
+      <div class="settings-panel">
+        <div class="settings-panel-head"><div><h2>Panel administrator</h2><p>The single account configured by the server-side FUSION_PANEL_ADMIN_USER_ID allowlist.</p></div><span class="settings-count">ALLOWLISTED</span></div>
+        <div class="security-row"><span class="security-check">✓</span><div><strong>${escapeHtml(email)}</strong><span>Current authenticated administrator session.</span></div><span class="security-state">AUTHORIZED</span></div>
+      </div>
+      <div class="settings-panel">
+        <div class="settings-panel-head"><div><h2>Access policy</h2><p>Current backend-enforced permissions.</p></div></div>
+        <div class="security-row"><span class="security-check">✓</span><div><strong>Panel API access</strong><span>Only the configured administrator user ID is accepted by the Edge Function.</span></div><span class="security-state">ENFORCED</span></div>
+        <div class="security-row"><span class="security-check">✓</span><div><strong>Bot service access</strong><span>Bot-only actions require the separate shared bot secret and do not use browser administrator credentials.</span></div><span class="security-state">SEPARATE</span></div>
+        <div class="security-row"><span class="security-check pending">!</span><div><strong>Additional staff accounts and per-server roles</strong><span>Not implemented yet. No staff member can be granted access from this page.</span></div><span class="security-state pending-text">NOT AVAILABLE</span></div>
+      </div>`;
+  }
+  return `<div class="empty-state"><div class="empty-icon">◈</div><h2>Page unavailable</h2><p>This panel section is not available.</p></div>`;
 }
 
 async function saveCommands() {
   const feedback = document.querySelector("#command-feedback");
   const commands = Object.fromEntries((dashboardData?.commands ?? []).map((item) => [item.name, item.enabled]));
   document.querySelectorAll("[data-command]").forEach((input) => { commands[input.dataset.command] = input.checked; });
-  const verification = dashboardData?.verification ?? { enabled: false, verifiedRoleId: null };
+  for (const name of ["account-verify", "account-status", "account-unlink"]) commands[name] = false;
+  const verification = { enabled: false, verifiedRoleId: null };
   const button = document.querySelector("#save-commands");
   if (button) button.disabled = true;
   if (feedback) feedback.textContent = "Saving…";
