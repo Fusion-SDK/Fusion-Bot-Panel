@@ -38,7 +38,8 @@ function validateConfig(input: unknown) {
   for (const name of Object.keys(DEFAULT_CONFIG.commands)) {
     const enabled = commandInput?.[name];
     if (typeof enabled !== "boolean") throw new Error(`Command setting '${name}' must be true or false.`);
-    // Account linking remains locked until the authenticated in-game flow is released.\n    commands[name] = name.startsWith("account-") ? false : enabled;
+    // Account linking remains locked until the authenticated in-game flow is released.
+    commands[name] = name.startsWith("account-") ? false : enabled;
   }
   if (!verificationInput || typeof verificationInput.enabled !== "boolean") {
     throw new Error("Verification enabled must be true or false.");
