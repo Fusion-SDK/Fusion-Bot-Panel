@@ -435,9 +435,52 @@ function renderPage(page = "overview") {
 }
 
 async function callPanel(action, payload = {}) {
-  if (!supabase || !currentSession) throw new Error("You must sign in first.");
-  const { data, error } = await supabase.functions.invoke(config.functionName, { body: { action, ...payload } });
-  if (error) throw new Error(error.message || "The panel API request failed.");
+  if (!supabase) throw new Error("Supabase is not configured.");
+
+  // Read the session immediately before the request. The in-memory session can
+  // be older than the persisted session after a token refresh in another tab.
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw new Error("Could not read your sign-in session: " + sessionError.message);
+
+  let session = sessionData.session;
+  if (!session) throw new Error("Your sign-in session has expired. Please sign in again.");
+
+  // Refresh shortly before expiry so the Edge Function receives a usable JWT.
+  if (session.expires_at && session.expires_at * 1000 <= Date.now() + 30_000) {
+    const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshError || !refreshData.session) {
+      throw new Error("Your sign-in session could not be refreshed. Please sign in again.");
+    }
+    session = refreshData.session;
+  }
+
+  currentSession = session;
+  const { data, error } = await supabase.functions.invoke(config.functionName, {
+    body: { action, ...payload },
+    headers: { Authorization: `Bearer ${session.access_token}` }
+  });
+
+  if (error) {
+    let detail = error.message || "The panel API request failed.";
+    const response = error.context;
+    if (response && typeof response.clone === "function") {
+      const copy = response.clone();
+      const status = response.status ? `HTTP ${response.status}: ` : "";
+      try {
+        const body = await copy.json();
+        detail = body?.error || body?.message || detail;
+      } catch {
+        try {
+          const bodyText = await response.clone().text();
+          if (bodyText) detail = bodyText.slice(0, 300);
+        } catch {
+          // Keep the SDK message when the response body is unavailable.
+        }
+      }
+      detail = status + detail;
+    }
+    throw new Error(detail);
+  }
   if (data?.error) throw new Error(data.error);
   return data;
 }
