@@ -129,7 +129,7 @@ Deno.serve(async (request) => {
     if (!safeEqual(supplied, botSecret)) return json({ error: "Unauthorized." }, 401);
     const entry = body.entry as Record<string, unknown> | undefined;
     const allowedActions = new Set(["warn", "timeout", "kick", "ban", "purge"]);
-    const validId = (value: unknown) => typeof value === "string" && /^\\d{17,20}$/.test(value);
+    const validId = (value: unknown) => typeof value === "string" && /^[0-9]{17,20}$/.test(value);
     if (!entry || !validId(entry.guildId) || !validId(entry.actorUserId) ||
         (entry.targetUserId !== null && !validId(entry.targetUserId)) ||
         typeof entry.action !== "string" || !allowedActions.has(entry.action) ||
