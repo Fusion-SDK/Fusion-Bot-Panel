@@ -314,6 +314,14 @@ Deno.serve(async (request) => {
     return json({ cases: data ?? [] });
   }
 
+  if (body.action === "get_moderation_cases") {
+    const { data, error } = await admin.from("fusion_moderation_cases")
+      .select("id, guild_id, actor_user_id, target_user_id, action, reason, duration_seconds, metadata, created_at")
+      .order("created_at", { ascending: false }).limit(100);
+    if (error) return json({ error: "Could not load moderation case history." }, 500);
+    return json({ cases: data ?? [] });
+  }
+
   if (body.action === "get_admin_audit") {
     const { data, error } = await admin.from("fusion_panel_audit")
       .select("id, actor_user_id, action, details, created_at")
