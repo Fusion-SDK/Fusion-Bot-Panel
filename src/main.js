@@ -81,7 +81,8 @@ function renderShell(content = "", currentPage = "overview") {
 
 function renderOverview() {
   const botStatus = dashboardData?.bot?.status ?? "Not connected";
-  const guildCount = dashboardData?.bot?.guildCount ?? "—";\n  const lastSync = dashboardData?.bot?.lastSeenAt ? new Date(dashboardData.bot.lastSeenAt).toLocaleString() : "No bot sync received yet";
+  const guildCount = dashboardData?.bot?.guildCount ?? "—";
+  const lastSync = dashboardData?.bot?.lastSeenAt ? new Date(dashboardData.bot.lastSeenAt).toLocaleString() : "No bot sync received yet";
   const commands = Array.isArray(dashboardData?.commands) ? dashboardData.commands : [];
   const enabled = commands.filter((item) => item.enabled).length;
   return `
@@ -140,6 +141,7 @@ let guildDirectoryLoading = false;
 let guildDirectoryLoaded = false;
 let guildResources = null;
 let guildResourcesLoading = false;
+let guildResourcesRequest = 0;
 
 function defaultGuildSecurity() {
   return {
@@ -227,18 +229,21 @@ async function loadGuildDirectory(force = false) {
   }
 }
 
-let guildSecurityRequest = 0;\nasync function loadGuildSecurity(guildId = document.querySelector("#security-guild-select")?.value) {
+let guildSecurityRequest = 0;
+async function loadGuildSecurity(guildId = document.querySelector("#security-guild-select")?.value) {
   if (!guildId || !guildDirectory.some((guild) => guild.guild_id === guildId)) return;
   if (activeSecurityGuildId !== guildId) guildResources = null;
+  const requestId = ++guildSecurityRequest;
   activeSecurityGuildId = guildId;
   activeGuildSecurity = null;
   renderPage("security");
   try {
     const result = await callPanel("get_guild_security", { guildId });
+    if (requestId !== guildSecurityRequest || activeSecurityGuildId !== guildId) return;
     activeGuildSecurity = result.config;
     renderPage("security");
-
   } catch (error) {
+    if (requestId !== guildSecurityRequest) return;
     const notice = document.querySelector(".notice");
     if (notice) notice.textContent = "Could not load server settings: " + error.message;
   }
@@ -303,23 +308,28 @@ function renderResourcePage(page) {
 
 async function loadGuildResources(guildId = activeSecurityGuildId) {
   if (!guildId || !guildDirectory.some((guild) => guild.guild_id === guildId)) return;
+  const requestId = ++guildResourcesRequest;
   activeSecurityGuildId = guildId;
   guildResourcesLoading = true;
   guildResources = null;
   renderPage(activePanelPage);
   try {
     const result = await callPanel("get_guild_resources", { guildId });
+    if (requestId !== guildResourcesRequest || activeSecurityGuildId !== guildId) return;
     guildResources = {
       roles: Array.isArray(result.roles) ? result.roles : [],
       channels: Array.isArray(result.channels) ? result.channels : [],
       updatedAt: result.updatedAt
     };
   } catch (error) {
+    if (requestId !== guildResourcesRequest) return;
     const notice = document.querySelector(".notice");
     if (notice) notice.textContent = "Could not load server resources: " + error.message;
   } finally {
-    guildResourcesLoading = false;
-    renderPage(activePanelPage);
+    if (requestId === guildResourcesRequest) {
+      guildResourcesLoading = false;
+      renderPage(activePanelPage);
+    }
   }
 }
 
@@ -357,7 +367,8 @@ async function saveCommands() {
   const feedback = document.querySelector("#command-feedback");
   const commands = Object.fromEntries((dashboardData?.commands ?? []).map((item) => [item.name, item.enabled]));
   document.querySelectorAll("[data-command]").forEach((input) => { commands[input.dataset.command] = input.checked; });
-  const verification = dashboardData?.verification ?? { enabled: false, verifiedRoleId: null };
+  for (const name of ["account-verify", "account-status", "account-unlink"]) commands[name] = false;
+  const verification = { enabled: false, verifiedRoleId: null };
   const button = document.querySelector("#save-commands");
   if (button) button.disabled = true;
   if (feedback) feedback.textContent = "Saving…";
