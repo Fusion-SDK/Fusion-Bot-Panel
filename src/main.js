@@ -59,8 +59,8 @@ function renderShell(content = "", currentPage = "overview") {
         <div class="workspace-label">WORKSPACE</div>
         <nav class="nav-list">
           <a class="nav-link ${currentPage === "overview" ? "active" : ""}" href="#overview"><span class="nav-icon">▦</span> Overview</a>
-          <a class="nav-link" href="#commands"><span class="nav-icon">⌘</span> Commands <span class="nav-count">4</span></a>
-          <a class="nav-link" href="#verification"><span class="nav-icon">◈</span> Verification</a>
+          <a class="nav-link ${currentPage === "commands" ? "active" : ""}" href="#commands"><span class="nav-icon">⌘</span> Commands <span class="nav-count">4</span></a>
+          <a class="nav-link ${currentPage === "verification" ? "active" : ""}" href="#verification"><span class="nav-icon">◈</span> Verification</a>
           <a class="nav-link ${currentPage === "security" ? "active" : ""}" href="#security"><span class="nav-icon">⬡</span> Server security</a>
           <a class="nav-link ${currentPage === "servers" ? "active" : ""}" href="#servers"><span class="nav-icon">◎</span> Servers</a>
           <a class="nav-link ${currentPage === "roles" ? "active" : ""}" href="#roles"><span class="nav-icon">♙</span> Roles</a>
@@ -96,7 +96,7 @@ function renderOverview() {
     <div class="section-heading"><div><h2>Quick management</h2><p>Common bot configuration areas.</p></div></div>
     <div class="quick-grid">
       <button class="quick-card" data-page="commands"><span class="quick-icon violet">⌘</span><strong>Command controls</strong><span>Enable or disable slash commands.</span><b>Open controls →</b></button>
-      <button class="quick-card" data-page="verification"><span class="quick-icon blue">◈</span><strong>Account verification</strong><span>Manage Fusion account-linking settings.</span><b>Configure →</b></button>
+      <button class="quick-card" data-page="verification"><span class="quick-icon blue">◈</span><strong>Account linking</strong><span>View the current release gate and readiness status.</span><b>Configure →</b></button>
       <button class="quick-card" data-page="permissions"><span class="quick-icon amber">♙</span><strong>Permissions</strong><span>Review who can use bot commands.</span><b>Manage access →</b></button>
     </div>
     <div class="section-heading lower"><div><h2>Security status</h2><p>Protection built into the control panel.</p></div></div>
@@ -355,12 +355,23 @@ async function loadSecurityEvents(force = false) {
 }
 
 function renderPlaceholder(page) {
-  const pages = {
-    permissions: ["Permissions", "Review command access and administrator permissions.", "Permission management will be added after command settings are connected."],
-    activity: ["Activity log", "Review security detections reported by the bot.", "Security event history is loading."]
-  };
-  const item = pages[page] ?? pages.permissions;
-  return `<div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / SETTINGS</div><h1>${item[0]}</h1><p>${item[1]}</p></div></div><div class="empty-state"><div class="empty-icon">◈</div><h2>Next integration step</h2><p>${item[2]}</p><span class="coming-soon">FOUNDATION IN PLACE</span></div>`;
+  if (page === "permissions") {
+    const email = currentSession?.user?.email ?? "Current administrator";
+    return `
+      <div class="page-heading"><div><div class="eyebrow">FUSION / ACCESS CONTROL</div><h1>Permissions</h1><p>Review who can administer this private Fusion panel.</p></div></div>
+      <div class="notice success">Every protected request is checked by the panel-admin Edge Function. Signing in alone does not grant access.</div>
+      <div class="settings-panel">
+        <div class="settings-panel-head"><div><h2>Panel administrator</h2><p>The single account configured by the server-side FUSION_PANEL_ADMIN_USER_ID allowlist.</p></div><span class="settings-count">ALLOWLISTED</span></div>
+        <div class="security-row"><span class="security-check">✓</span><div><strong>${escapeHtml(email)}</strong><span>Current authenticated administrator session.</span></div><span class="security-state">AUTHORIZED</span></div>
+      </div>
+      <div class="settings-panel">
+        <div class="settings-panel-head"><div><h2>Access policy</h2><p>Current backend-enforced permissions.</p></div></div>
+        <div class="security-row"><span class="security-check">✓</span><div><strong>Panel API access</strong><span>Only the configured administrator user ID is accepted by the Edge Function.</span></div><span class="security-state">ENFORCED</span></div>
+        <div class="security-row"><span class="security-check">✓</span><div><strong>Bot service access</strong><span>Bot-only actions require the separate shared bot secret and do not use browser administrator credentials.</span></div><span class="security-state">SEPARATE</span></div>
+        <div class="security-row"><span class="security-check pending">!</span><div><strong>Additional staff accounts and per-server roles</strong><span>Not implemented yet. No staff member can be granted access from this page.</span></div><span class="security-state pending-text">NOT AVAILABLE</span></div>
+      </div>`;
+  }
+  return `<div class="empty-state"><div class="empty-icon">◈</div><h2>Page unavailable</h2><p>This panel section is not available.</p></div>`;
 }
 
 async function saveCommands() {
