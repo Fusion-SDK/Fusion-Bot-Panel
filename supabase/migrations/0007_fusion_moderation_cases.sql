@@ -1,3 +1,36 @@
+-- Add the manual moderation command defaults to existing panel configuration.
+alter table public.fusion_panel_config
+  alter column config set default '{
+    "commands": {
+      "ping": true,
+      "warn": true,
+      "timeout": true,
+      "kick": true,
+      "ban": true,
+      "purge": true,
+      "account-verify": false,
+      "account-status": false,
+      "account-unlink": false
+    },
+    "verification": { "enabled": false, "verifiedRoleId": null }
+  }'::jsonb;
+
+update public.fusion_panel_config
+set config = jsonb_set(
+  jsonb_set(
+    jsonb_set(
+      jsonb_set(
+        jsonb_set(config, '{commands,warn}', 'true'::jsonb, true),
+        '{commands,timeout}', 'true'::jsonb, true
+      ),
+      '{commands,kick}', 'true'::jsonb, true
+    ),
+    '{commands,ban}', 'true'::jsonb, true
+  ),
+  '{commands,purge}', 'true'::jsonb, true
+)
+where id = 1;
+
 -- Persistent, private case history for moderator-initiated actions.
 create table if not exists public.fusion_moderation_cases (
   id bigint generated always as identity primary key,
