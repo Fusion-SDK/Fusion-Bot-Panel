@@ -75,22 +75,20 @@ function renderShell(content = "", currentPage = "overview") {
   document.querySelector("#sign-out")?.addEventListener("click", signOut);
   document.querySelectorAll(".nav-link").forEach((link) => link.addEventListener("click", (event) => {
     event.preventDefault();
-    const page = link.getAttribute("href").slice(1);
-    document.querySelectorAll(".nav-link").forEach((item) => item.classList.toggle("active", item === link));
-    renderPage(page);
+    navigateToPage(link.getAttribute("href").slice(1));
   }));
 }
 
 function renderOverview() {
   const botStatus = dashboardData?.bot?.status ?? "Not connected";
-  const guildCount = dashboardData?.bot?.guildCount ?? "—";
+  const guildCount = dashboardData?.bot?.guildCount ?? "—";\n  const lastSync = dashboardData?.bot?.lastSeenAt ? new Date(dashboardData.bot.lastSeenAt).toLocaleString() : "No bot sync received yet";
   const commands = Array.isArray(dashboardData?.commands) ? dashboardData.commands : [];
   const enabled = commands.filter((item) => item.enabled).length;
   return `
     <div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / CONTROL CENTER</div><h1>Overview</h1><p>Your bot's configuration and operational status at a glance.</p></div><button class="button subtle" id="refresh">↻ <span>Refresh</span></button></div>
     <div class="notice ${dashboardData ? "success" : "warning"}">${dashboardData ? "Connected to the Fusion administration service." : "Dashboard interface is ready. The secure panel-admin backend function still needs to be deployed and configured."}</div>
     <div class="stats-grid">
-      <article class="stat-card"><div class="stat-top"><span>BOT STATUS</span><span class="stat-icon">◉</span></div><div class="stat-value">${escapeHtml(botStatus)}</div><div class="stat-note"><span class="muted-dot"></span> Reported by backend</div></article>
+      <article class="stat-card"><div class="stat-top"><span>BOT STATUS</span><span class="stat-icon">◉</span></div><div class="stat-value">${escapeHtml(botStatus)}</div><div class="stat-note"><span class="muted-dot"></span> ${escapeHtml(lastSync)}</div></article>
       <article class="stat-card"><div class="stat-top"><span>COMMANDS ENABLED</span><span class="stat-icon">⌘</span></div><div class="stat-value">${dashboardData ? enabled + " / " + commands.length : "—"}</div><div class="stat-note">Managed configuration</div></article>
       <article class="stat-card"><div class="stat-top"><span>DISCORD SERVERS</span><span class="stat-icon">◎</span></div><div class="stat-value">${escapeHtml(guildCount)}</div><div class="stat-note">Live bot metric, when available</div></article>
     </div>
@@ -111,7 +109,7 @@ function renderCommands() {
   const rows = commands.map((command) => `
     <label class="setting-row">
       <span class="setting-copy"><strong>/${escapeHtml(command.name)}</strong><span>${command.name === "ping" ? "Basic bot responsiveness check." : command.name === "account-verify" ? "Start the Fusion account-linking process. Keep disabled until the in-game linking flow is ready." : command.name === "account-status" ? "Check the linked Fusion account status." : "Remove the current Fusion account link."}</span></span>
-      <input class="setting-toggle" type="checkbox" data-command="${escapeHtml(command.name)}" ${command.enabled ? "checked" : ""} />
+      <input class="setting-toggle" type="checkbox" data-command="${escapeHtml(command.name)}" ${command.enabled && !command.name.startsWith("account-") ? "checked" : ""} ${command.name.startsWith("account-") ? "disabled" : ""} />
       <span class="toggle-ui" aria-hidden="true"></span>
     </label>`).join("");
   return `
@@ -124,18 +122,16 @@ function renderCommands() {
 }
 
 function renderVerification() {
-  const verification = dashboardData?.verification ?? { enabled: false, verifiedRoleId: null };
   return `
-    <div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / CONFIGURATION</div><h1>Verification settings</h1><p>Manage the Discord role used after a Fusion account is securely linked.</p></div><button class="button primary" id="save-verification">Save changes</button></div>
-    <div class="notice warning">Account verification is currently gated off in the bot. Keep this disabled until the authenticated in-game linking flow is implemented and tested.</div>
+    <div class="page-heading"><div><div class="eyebrow">FUSION DISCORD / RELEASE GATE</div><h1>Account linking</h1><p>Discord account linking is not available in this release.</p></div></div>
+    <div class="notice warning">Locked by the Fusion release gate. Keep account verification disabled until the authenticated in-game linking flow is implemented and tested.</div>
     <div class="settings-panel">
-      <div class="settings-panel-head"><div><h2>Account verification</h2><p>These settings are stored securely, but enabling them here does not bypass the bot's release gate.</p></div></div>
-      <label class="setting-row"><span class="setting-copy"><strong>Enable verification</strong><span>Allow the verification feature when the bot implementation is ready.</span></span><input class="setting-toggle" id="verification-enabled" type="checkbox" ${verification.enabled ? "checked" : ""} /><span class="toggle-ui" aria-hidden="true"></span></label>
-      <div class="field-setting"><label for="verified-role-id">Verified Discord role ID</label><input id="verified-role-id" inputmode="numeric" autocomplete="off" placeholder="e.g. 123456789012345678" value="${escapeHtml(verification.verifiedRoleId ?? "")}" /><p>Enter a Discord role ID, or leave blank if no role is configured.</p></div>
-    </div>
-    <p class="save-feedback" id="verification-feedback" role="status"></p>`;
+      <div class="settings-panel-head"><div><h2>Verification is disabled</h2><p>The panel cannot enable linking, issue challenges, change verified roles, or alter account-link status.</p></div><span class="settings-count">LOCKED</span></div>
+      <div class="security-row"><span class="security-check pending">!</span><div><strong>Authenticated in-game linking</strong><span>Not yet released or validated end-to-end.</span></div><span class="security-state pending-text">NOT READY</span></div>
+      <div class="security-row"><span class="security-check pending">!</span><div><strong>Discord verification commands</strong><span>/account-verify, /account-status, and /account-unlink are disabled.</span></div><span class="security-state pending-text">DISABLED</span></div>
+      <div class="security-row"><span class="security-check pending">!</span><div><strong>Verified role synchronization</strong><span>No account-link verification role changes are performed.</span></div><span class="security-state pending-text">DISABLED</span></div>
+    </div>`;
 }
-
 
 let activeGuildSecurity = null;
 let activeSecurityGuildId = "";
@@ -221,7 +217,7 @@ async function loadGuildDirectory(force = false) {
     }
     renderPage(activePanelPage);
     if (activeSecurityGuildId && activePanelPage === "security" && !activeGuildSecurity) await loadGuildSecurity(activeSecurityGuildId);
-    if (activeSecurityGuildId && ["roles", "channels"].includes(activePanelPage)) await loadGuildResources(activeSecurityGuildId);
+
   } catch (error) {
     if (feedback) feedback.textContent = "Could not load the bot's server list: " + error.message;
     const notice = document.querySelector(".notice");
@@ -231,7 +227,7 @@ async function loadGuildDirectory(force = false) {
   }
 }
 
-async function loadGuildSecurity(guildId = document.querySelector("#security-guild-select")?.value) {
+let guildSecurityRequest = 0;\nasync function loadGuildSecurity(guildId = document.querySelector("#security-guild-select")?.value) {
   if (!guildId || !guildDirectory.some((guild) => guild.guild_id === guildId)) return;
   if (activeSecurityGuildId !== guildId) guildResources = null;
   activeSecurityGuildId = guildId;
@@ -241,7 +237,7 @@ async function loadGuildSecurity(guildId = document.querySelector("#security-gui
     const result = await callPanel("get_guild_security", { guildId });
     activeGuildSecurity = result.config;
     renderPage("security");
-    if (!guildResources || activeSecurityGuildId !== guildId) await loadGuildResources(guildId);
+
   } catch (error) {
     const notice = document.querySelector(".notice");
     if (notice) notice.textContent = "Could not load server settings: " + error.message;
