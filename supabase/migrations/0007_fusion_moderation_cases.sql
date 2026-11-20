@@ -3,11 +3,11 @@ alter table public.fusion_panel_config
   alter column config set default '{
     "commands": {
       "ping": true,
-      "warn": true,
-      "timeout": true,
-      "kick": true,
-      "ban": true,
-      "purge": true,
+      "warn": false,
+      "timeout": false,
+      "kick": false,
+      "ban": false,
+      "purge": false,
       "account-verify": false,
       "account-status": false,
       "account-unlink": false
