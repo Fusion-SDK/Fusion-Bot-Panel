@@ -20,14 +20,14 @@ set config = jsonb_set(
   jsonb_set(
     jsonb_set(
       jsonb_set(
-        jsonb_set(config, '{commands,warn}', 'true'::jsonb, true),
-        '{commands,timeout}', 'true'::jsonb, true
+        jsonb_set(config, '{commands,warn}', 'false'::jsonb, true),
+        '{commands,timeout}', 'false'::jsonb, true
       ),
-      '{commands,kick}', 'true'::jsonb, true
+      '{commands,kick}', 'false'::jsonb, true
     ),
-    '{commands,ban}', 'true'::jsonb, true
+    '{commands,ban}', 'false'::jsonb, true
   ),
-  '{commands,purge}', 'true'::jsonb, true
+  '{commands,purge}', 'false'::jsonb, true
 )
 where id = 1;
 
