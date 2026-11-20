@@ -300,16 +300,19 @@ Deno.serve(async (request) => {
     const { data, error } = await admin.from("fusion_panel_config")
       .select("config, updated_at").eq("id", 1).single();
     if (error) return json({ error: "Could not load dashboard configuration." }, 500);
-    const { data: guildRows, error: guildError } = await admin.from("fusion_bot_guilds")
-      .select("guild_id, updated_at").order("updated_at", { ascending: false });
-    if (guildError) return json({ error: "Could not load bot status." }, 500);
-    const lastSeenAt = guildRows?.[0]?.updated_at ?? null;
+    const [{ count: guildCount, error: guildCountError }, { data: latestSync, error: syncError }] = await Promise.all([
+      admin.from("fusion_bot_guilds").select("guild_id", { count: "exact", head: true }),
+      admin.from("fusion_bot_guilds").select("updated_at").order("updated_at", { ascending: false }).limit(1)
+    ]);
+    const missingDirectory = guildCountError?.code === "42P01" || syncError?.code === "42P01";
+    if ((guildCountError || syncError) && !missingDirectory) return json({ error: "Could not load bot status." }, 500);
+    const lastSeenAt = latestSync?.[0]?.updated_at ?? null;
     const syncAge = lastSeenAt ? Date.now() - Date.parse(lastSeenAt) : Number.POSITIVE_INFINITY;
-    const status = syncAge <= 150_000 ? "Online" : guildRows?.length ? "Last seen" : "Waiting for bot";
+    const status = syncAge <= 150_000 ? "Online" : (guildCount ?? 0) > 0 ? "Last seen" : "Waiting for bot";
     const commands = Object.entries((data.config as typeof DEFAULT_CONFIG).commands)
       .map(([name, enabled]) => ({ name, enabled: name.startsWith("account-") ? false : enabled }));
     return json({
-      bot: { status, guildCount: guildRows?.length ?? 0, lastSeenAt },
+      bot: { status, guildCount: missingDirectory ? 0 : guildCount ?? 0, lastSeenAt },
       commands,
       verification: { enabled: false, verifiedRoleId: null },
       updatedAt: data.updated_at
